@@ -10,6 +10,7 @@ export default function SignupPage() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [school, setSchool] = useState('ISAP')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -35,6 +36,7 @@ export default function SignupPage() {
         name,
         email,
         role: 'student',
+        school,
       })
 
       if (profileError) {
@@ -65,6 +67,18 @@ export default function SignupPage() {
               onChange={(e) => setName(e.target.value)}
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">School</label>
+            <select
+              value={school}
+              onChange={(e) => setSchool(e.target.value)}
+              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
+            >
+              <option value="ISAP">ISAP - International School of Asia and the Pacific</option>
+              <option value="MCNP">MCNP - Medical Colleges of Northern Philippines</option>
+            </select>
           </div>
 
           <div>
