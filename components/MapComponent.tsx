@@ -3,51 +3,63 @@
 import { useEffect } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet'
 import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
 
-// Fix Leaflet default icon issue with Next.js
-delete (L.Icon.Default.prototype as any)._getIconUrl
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
-})
+// Fix Leaflet icon issue with Next.js
+const fixLeafletIcons = () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  delete (L.Icon.Default.prototype as any)._getIconUrl
+  L.Icon.Default.mergeOptions({
+    iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+    iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  })
+}
 
-const userIcon = L.divIcon({
+const createUserIcon = () => L.divIcon({
   html: `<div style="
-    width: 16px; height: 16px; background: #3b82f6;
-    border: 3px solid white; border-radius: 50%;
-    box-shadow: 0 0 0 3px rgba(59,130,246,0.3);
+    width:18px;height:18px;
+    background:#3b82f6;
+    border:3px solid white;
+    border-radius:50%;
+    box-shadow:0 0 0 3px rgba(59,130,246,0.3);
   "></div>`,
   className: '',
-  iconSize: [16, 16],
-  iconAnchor: [8, 8],
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
 })
 
-const destinationIcon = L.divIcon({
+const createDestinationIcon = () => L.divIcon({
   html: `<div style="
-    width: 20px; height: 20px; background: #ef4444;
-    border: 3px solid white; border-radius: 50%;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    width:22px;height:22px;
+    background:#ef4444;
+    border:3px solid white;
+    border-radius:50%;
+    box-shadow:0 2px 8px rgba(0,0,0,0.4);
   "></div>`,
   className: '',
-  iconSize: [20, 20],
-  iconAnchor: [10, 10],
+  iconSize: [22, 22],
+  iconAnchor: [11, 11],
 })
 
-const officeIcon = (school: string) => L.divIcon({
+const createOfficeIcon = (school: string, isSelected: boolean) => L.divIcon({
   html: `<div style="
-    width: 14px; height: 14px;
-    background: ${school === 'ISAP' ? '#ef4444' : '#3b82f6'};
-    border: 2px solid white; border-radius: 50%;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+    width:${isSelected ? 18 : 14}px;
+    height:${isSelected ? 18 : 14}px;
+    background:${isSelected ? '#ef4444' : school === 'ISAP' ? '#f87171' : '#60a5fa'};
+    border:2px solid white;
+    border-radius:50%;
+    box-shadow:0 1px 4px rgba(0,0,0,0.3);
+    transition:all 0.2s;
   "></div>`,
   className: '',
-  iconSize: [14, 14],
-  iconAnchor: [7, 7],
+  iconSize: [isSelected ? 18 : 14, isSelected ? 18 : 14],
+  iconAnchor: [isSelected ? 9 : 7, isSelected ? 9 : 7],
 })
 
-function FitBounds({ userPosition, selectedLocation }: {
+function FitBounds({
+  userPosition,
+  selectedLocation
+}: {
   userPosition: [number, number] | null
   selectedLocation: { latitude: number; longitude: number } | null
 }) {
@@ -59,11 +71,11 @@ function FitBounds({ userPosition, selectedLocation }: {
         [userPosition[0], userPosition[1]],
         [selectedLocation.latitude, selectedLocation.longitude]
       )
-      map.fitBounds(bounds, { padding: [40, 40] })
+      map.fitBounds(bounds, { padding: [60, 60] })
     } else if (selectedLocation?.latitude && selectedLocation?.longitude) {
-      map.setView([selectedLocation.latitude, selectedLocation.longitude], 18)
+      map.setView([selectedLocation.latitude, selectedLocation.longitude], 19)
     }
-  }, [selectedLocation, userPosition])
+  }, [selectedLocation, userPosition, map])
 
   return null
 }
@@ -93,6 +105,8 @@ export default function MapComponent({
   center, zoom, locations, userPosition,
   selectedLocation, routeCoordinates, onLocationClick, school
 }: Props) {
+  useEffect(() => { fixLeafletIcons() }, [])
+
   const routeColor = school === 'ISAP' ? '#ef4444' : '#3b82f6'
 
   return (
@@ -100,18 +114,18 @@ export default function MapComponent({
       center={center}
       zoom={zoom}
       style={{ height: '100%', width: '100%' }}
-      className="z-0"
+      className="z-0 rounded-2xl"
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
 
-      {/* User location */}
+      {/* User location marker */}
       {userPosition && (
-        <Marker position={userPosition} icon={userIcon}>
+        <Marker position={userPosition} icon={createUserIcon()}>
           <Popup>
-            <div className="text-xs font-semibold">📍 Your location</div>
+            <div className="text-xs font-semibold text-center">📍 Your location</div>
           </Popup>
         </Marker>
       )}
@@ -124,16 +138,16 @@ export default function MapComponent({
           <Marker
             key={loc.id}
             position={[loc.latitude, loc.longitude]}
-            icon={isSelected ? destinationIcon : officeIcon(loc.school)}
+            icon={createOfficeIcon(loc.school, isSelected)}
           >
             <Popup>
-              <div className="text-xs">
+              <div className="text-xs space-y-1 min-w-32">
                 <p className="font-bold text-slate-900">{loc.office_name}</p>
                 <p className="text-slate-500">{loc.building}</p>
                 {loc.room && <p className="text-slate-500">{loc.room}</p>}
                 <button
                   onClick={() => onLocationClick(loc)}
-                  className="mt-2 text-xs font-semibold text-blue-600 hover:underline"
+                  className="mt-2 w-full text-xs font-semibold text-white bg-blue-500 hover:bg-blue-600 px-2 py-1 rounded-lg transition-all"
                 >
                   Get directions →
                 </button>
@@ -143,18 +157,27 @@ export default function MapComponent({
         )
       })}
 
-      {/* Route line */}
+      {/* Route polyline */}
       {routeCoordinates && routeCoordinates.length > 0 && (
-        <Polyline
-          positions={routeCoordinates}
-          color={routeColor}
-          weight={4}
-          opacity={0.8}
-          dashArray="8, 4"
-        />
+        <>
+          {/* Route shadow for depth */}
+          <Polyline
+            positions={routeCoordinates}
+            color="#000"
+            weight={6}
+            opacity={0.15}
+          />
+          {/* Main route line */}
+          <Polyline
+            positions={routeCoordinates}
+            color={routeColor}
+            weight={4}
+            opacity={0.9}
+            dashArray="10, 6"
+          />
+        </>
       )}
 
-      {/* Fit map to route */}
       <FitBounds userPosition={userPosition} selectedLocation={selectedLocation} />
     </MapContainer>
   )

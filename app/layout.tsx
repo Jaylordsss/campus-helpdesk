@@ -12,7 +12,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <link
           rel="stylesheet"
-          href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"
+          href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
         />
       </head>
       <body>{children}</body>
