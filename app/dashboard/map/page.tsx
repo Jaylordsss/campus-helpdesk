@@ -31,6 +31,38 @@ type RouteInfo = {
   distance: number
   duration: number
   coordinates: [number, number][]
+  isStraightLine?: boolean
+}
+
+function haversineDistance(
+  lat1: number, lng1: number,
+  lat2: number, lng2: number
+): number {
+  const R = 6371000
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLng = (lng2 - lng1) * Math.PI / 180
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) *
+    Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+function generateStraightLinePoints(
+  from: [number, number],
+  to: [number, number]
+): [number, number][] {
+  const points: [number, number][] = []
+  const steps = 30
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps
+    points.push([
+      from[0] + (to[0] - from[0]) * t,
+      from[1] + (to[1] - from[1]) * t,
+    ])
+  }
+  return points
 }
 
 export default function MapPage() {
@@ -43,7 +75,7 @@ export default function MapPage() {
   const [filterSchool, setFilterSchool] = useState<'ALL' | 'ISAP' | 'MCNP'>('ALL')
   const [loading, setLoading] = useState(true)
   const [locationError, setLocationError] = useState('')
-  const [locationPermission, setLocationPermission] = useState<'pending' | 'granted' | 'denied'>('pending')
+ const [locationPermission, setLocationPermission] = useState<'pending' | 'granted' | 'denied'>('pending')
 
   useEffect(() => {
     const getData = async () => {
@@ -52,14 +84,22 @@ export default function MapPage() {
       if (!user) return
 
       const { data: profileData } = await supabase
-        .from('profiles').select('name, school').eq('id', user.id).single()
+        .from('profiles')
+        .select('name, school')
+        .eq('id', user.id)
+        .single()
+
       if (profileData) {
         setProfile(profileData)
         setFilterSchool(profileData.school as 'ISAP' | 'MCNP')
       }
 
       const { data: locData } = await supabase
-        .from('locations').select('*').order('school').order('office_name')
+        .from('locations')
+        .select('*')
+        .order('school')
+        .order('office_name')
+
       setLocations(locData || [])
       setLoading(false)
     }
@@ -82,7 +122,7 @@ export default function MapPage() {
       err => {
         setLocationPermission('denied')
         if (err.code === err.PERMISSION_DENIED) {
-          setLocationError('Location access was denied. Please enable it in your browser settings to get directions.')
+          setLocationError('Location access denied. Please enable it in your browser settings.')
         } else {
           setLocationError('Could not get your location. Please try again.')
         }
@@ -104,7 +144,7 @@ export default function MapPage() {
     }
 
     if (!destination.latitude || !destination.longitude) {
-      setLocationError('This office does not have coordinates set yet. Please contact the admin.')
+      setLocationError('This office does not have coordinates set yet.')
       return
     }
 
@@ -113,30 +153,30 @@ export default function MapPage() {
     setRouteInfo(null)
     setLocationError('')
 
-    try {
-      const url = `https://router.project-osrm.org/route/v1/foot/${userPosition[1]},${userPosition[0]};${destination.longitude},${destination.latitude}?overview=full&geometries=geojson`
+    // Calculate straight-line distance
+    const straightDistance = haversineDistance(
+      userPosition[0], userPosition[1],
+      destination.latitude, destination.longitude
+    )
 
-      const res = await fetch(url)
-      const data = await res.json()
+    // Always use straight line for campus
+    // Campus distances are too short for road routing to be useful
+    const straightLinePoints = generateStraightLinePoints(
+      [userPosition[0], userPosition[1]],
+      [destination.latitude, destination.longitude]
+    )
 
-      if (data.code === 'Ok' && data.routes.length > 0) {
-        const route = data.routes[0]
-        const coords = route.geometry.coordinates.map(
-          (c: number[]) => [c[1], c[0]] as [number, number]
-        )
-        setRouteInfo({
-          distance: route.distance,
-          duration: route.duration,
-          coordinates: coords
-        })
-      } else {
-        setLocationError('Could not find a walking route to this location.')
-      }
-    } catch {
-      setLocationError('Failed to get directions. Please check your internet connection.')
-    } finally {
-      setLoadingRoute(false)
-    }
+    // Walking estimate: 5 km/h = 83.3 m/min
+    const estimatedDuration = (straightDistance / 83.3) * 60
+
+    setRouteInfo({
+      distance: straightDistance,
+      duration: estimatedDuration,
+      coordinates: straightLinePoints,
+      isStraightLine: true
+    })
+
+    setLoadingRoute(false)
   }
 
   const clearRoute = () => {
@@ -150,23 +190,30 @@ export default function MapPage() {
   )
 
   const isISAP = profile?.school === 'ISAP'
-  const accentBtn = isISAP ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-500 hover:bg-blue-600'
+  const accentBtn = isISAP
+    ? 'bg-red-500 hover:bg-red-600'
+    : 'bg-blue-500 hover:bg-blue-600'
   const accentText = isISAP ? 'text-red-600' : 'text-blue-600'
-  const accentBanner = isISAP ? 'bg-red-50 border-red-100' : 'bg-blue-50 border-blue-100'
+  const accentBanner = isISAP
+    ? 'bg-red-50 border-red-100'
+    : 'bg-blue-50 border-blue-100'
 
   const formatDistance = (m: number) =>
     m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(2)} km`
 
   const formatDuration = (s: number) => {
     const mins = Math.round(s / 60)
+    if (mins < 1) return '< 1 min walk'
     if (mins < 60) return `~${mins} min walk`
     return `~${Math.floor(mins / 60)}h ${mins % 60}m walk`
   }
 
-  const mapCenter: [number, number] = locations.find(l => l.latitude && l.longitude)
+  const mapCenter: [number, number] = locations.find(
+    l => l.latitude && l.longitude
+  )
     ? [
         locations.find(l => l.latitude && l.longitude)!.latitude,
-        locations.find(l => l.latitude && l.longitude)!.longitude
+        locations.find(l => l.latitude && l.longitude)!.longitude,
       ]
     : [14.5995, 120.9842]
 
@@ -190,7 +237,6 @@ export default function MapPage() {
           </p>
         </div>
 
-        {/* Location permission button */}
         {locationPermission === 'pending' && (
           <button
             onClick={requestLocation}
@@ -201,14 +247,16 @@ export default function MapPage() {
           </button>
         )}
         {locationPermission === 'granted' && (
-          <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-100 rounded-xl">
-            <div className="w-2 h-2 bg-emerald-400 rounded-full" />
-            <span className="text-xs font-semibold text-emerald-700">Location active</span>
+          <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-100 rounded-xl shrink-0">
+            <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
+            <span className="text-xs font-semibold text-emerald-700">
+              Location active
+            </span>
           </div>
         )}
       </div>
 
-      {/* Location permission prompt */}
+      {/* Enable location prompt */}
       {locationPermission === 'pending' && (
         <div className={`rounded-2xl border p-4 flex items-start gap-3 ${accentBanner}`}>
           <Navigation size={18} className={`shrink-0 mt-0.5 ${accentText}`} />
@@ -217,7 +265,8 @@ export default function MapPage() {
               Enable location for directions
             </p>
             <p className="text-xs text-slate-500 mt-0.5">
-              Click "Enable Location" above to allow the map to show your position and calculate walking routes to campus offices.
+              Click "Enable Location" above to allow the map to show your
+              position and draw a direct line to campus offices.
             </p>
           </div>
         </div>
@@ -227,12 +276,16 @@ export default function MapPage() {
       {selectedLocation && routeInfo && (
         <div className={`rounded-2xl border p-4 ${accentBanner}`}>
           <div className="flex items-start justify-between gap-3">
-            <div>
+            <div className="flex-1">
               <p className={`text-sm font-bold ${accentText}`}>
                 Directions to {selectedLocation.office_name}
               </p>
               <p className="text-xs text-slate-500 mt-0.5">
-                {selectedLocation.building}{selectedLocation.room ? ` · ${selectedLocation.room}` : ''}
+                {selectedLocation.building}
+                {selectedLocation.room ? ` · ${selectedLocation.room}` : ''}
+              </p>
+              <p className="text-xs text-amber-600 mt-1 font-medium">
+                ⚠ Straight-line shown — please follow campus walkways
               </p>
             </div>
             <button
@@ -267,14 +320,14 @@ export default function MapPage() {
         </div>
       )}
 
-      {/* Map + location list */}
+      {/* Map + list */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
         {/* Map */}
         <div className="lg:col-span-2 h-[400px] sm:h-[500px] rounded-2xl overflow-hidden border border-slate-200 shadow-sm">
           <MapComponent
             center={mapCenter}
-            zoom={17}
+            zoom={18}
             locations={filtered}
             userPosition={userPosition}
             selectedLocation={selectedLocation}
@@ -286,8 +339,6 @@ export default function MapPage() {
 
         {/* Location list */}
         <div className="flex flex-col gap-3">
-
-          {/* Filter tabs */}
           <div className="flex items-center gap-2">
             {(['ALL', 'ISAP', 'MCNP'] as const).map(s => (
               <button
@@ -295,8 +346,10 @@ export default function MapPage() {
                 onClick={() => setFilterSchool(s)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                   filterSchool === s
-                    ? s === 'ISAP' ? 'bg-red-100 text-red-700'
-                      : s === 'MCNP' ? 'bg-blue-100 text-blue-700'
+                    ? s === 'ISAP'
+                      ? 'bg-red-100 text-red-700'
+                      : s === 'MCNP'
+                      ? 'bg-blue-100 text-blue-700'
                       : 'bg-slate-800 text-white'
                     : 'bg-white border border-slate-200 text-slate-500 hover:border-slate-300'
                 }`}
@@ -307,7 +360,6 @@ export default function MapPage() {
             <span className="text-xs text-slate-400 ml-1">{filtered.length}</span>
           </div>
 
-          {/* Scrollable office list */}
           <div className="space-y-2 overflow-y-auto max-h-[460px] pr-1">
             {filtered.map(loc => {
               const isSelected = selectedLocation?.id === loc.id
@@ -325,31 +377,43 @@ export default function MapPage() {
                   }`}
                 >
                   <div className="flex items-start gap-3">
-                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                      loc.school === 'ISAP' ? 'bg-red-100' : 'bg-blue-100'
-                    }`}>
-                      <MapPin size={15} className={loc.school === 'ISAP' ? 'text-red-600' : 'text-blue-600'} />
+                    <div
+                      className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                        loc.school === 'ISAP' ? 'bg-red-100' : 'bg-blue-100'
+                      }`}
+                    >
+                      <MapPin
+                        size={15}
+                        className={
+                          loc.school === 'ISAP' ? 'text-red-600' : 'text-blue-600'
+                        }
+                      />
                     </div>
-
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-xs font-semibold text-slate-900 leading-tight">
                           {loc.office_name}
                         </p>
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
-                          loc.school === 'ISAP' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'
-                        }`}>
+                        <span
+                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                            loc.school === 'ISAP'
+                              ? 'bg-red-100 text-red-600'
+                              : 'bg-blue-100 text-blue-600'
+                          }`}
+                        >
                           {loc.school}
                         </span>
                       </div>
-                      <p className="text-[11px] text-slate-400 mt-0.5">{loc.building}</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        {loc.building}
+                      </p>
                       {loc.room && (
                         <p className="text-[11px] text-slate-400">{loc.room}</p>
                       )}
 
                       {!hasCoords ? (
                         <p className="text-[10px] text-amber-500 mt-1.5 font-medium">
-                          No coordinates set yet
+                          No coordinates set
                         </p>
                       ) : (
                         <button
@@ -358,7 +422,9 @@ export default function MapPage() {
                           className={`mt-2 flex items-center gap-1.5 text-[11px] font-semibold text-white px-3 py-1.5 rounded-lg transition-all disabled:opacity-60 ${accentBtn}`}
                         >
                           <Navigation size={11} />
-                          {loadingRoute && isSelected ? 'Getting route...' : 'Get Directions'}
+                          {loadingRoute && isSelected
+                            ? 'Getting route...'
+                            : 'Get Directions'}
                         </button>
                       )}
                     </div>
@@ -377,19 +443,30 @@ export default function MapPage() {
         </div>
       </div>
 
-      {/* Instructions */}
+      {/* How to use */}
       <div className="bg-white rounded-2xl border border-slate-100 p-4">
         <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">
           How to use
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {[
-            { step: '1', text: 'Click "Enable Location" to share your current position' },
-            { step: '2', text: 'Browse offices in the list or click markers on the map' },
-            { step: '3', text: 'Click "Get Directions" to see the walking route' },
+            {
+              step: '1',
+              text: 'Click "Enable Location" to share your current position',
+            },
+            {
+              step: '2',
+              text: 'Browse offices in the list or click markers on the map',
+            },
+            {
+              step: '3',
+              text: 'Click "Get Directions" to see the straight-line path to the office',
+            },
           ].map(item => (
             <div key={item.step} className="flex items-start gap-3">
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 ${accentBtn}`}>
+              <div
+                className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 ${accentBtn}`}
+              >
                 {item.step}
               </div>
               <p className="text-xs text-slate-500 leading-relaxed">{item.text}</p>

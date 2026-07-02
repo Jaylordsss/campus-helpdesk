@@ -6,7 +6,8 @@ import { createClient } from '@/src/lib/supabase/client'
 import {
   LayoutDashboard, BookOpen, CreditCard,
   Map, MessageSquare, Star, LogOut,
-  Menu, GraduationCap, Bot, ChevronRight
+  Menu, GraduationCap, Bot, ChevronRight,
+  HelpCircle
 } from 'lucide-react'
 
 const navItems = [
@@ -15,6 +16,7 @@ const navItems = [
   { label: 'Courses', href: '/dashboard/courses', icon: BookOpen },
   { label: 'Tuition', href: '/dashboard/tuition', icon: CreditCard },
   { label: 'Campus Map', href: '/dashboard/map', icon: Map },
+  { label: 'FAQs', href: '/dashboard/faq', icon: HelpCircle },
   { label: 'Inquiries', href: '/dashboard/inquiries', icon: MessageSquare },
   { label: 'Feedback', href: '/dashboard/feedback', icon: Star },
 ]
