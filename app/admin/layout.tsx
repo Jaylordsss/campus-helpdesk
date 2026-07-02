@@ -8,6 +8,7 @@ import {
   MapPin, MessageSquare, Star, HelpCircle,
   TrendingUp, LogOut, Menu, ShieldCheck, ChevronRight
 } from 'lucide-react'
+import NotificationBell from '@/components/NotificationBell'
 
 const navItems = [
   { label: 'Dashboard', href: '/admin', icon: LayoutDashboard },
@@ -54,7 +55,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           onClick={() => setSidebarOpen(false)} />
       )}
 
-      {/* Sidebar */}
       <aside className={`
         fixed top-0 left-0 h-full w-56 bg-white border-r border-slate-200 z-30 flex flex-col
         transition-transform duration-200
@@ -62,7 +62,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         lg:translate-x-0 lg:static lg:z-auto
       `}>
 
-        {/* Logo */}
         <div className="px-4 py-5 border-b border-slate-100">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-gradient-to-br from-red-100 to-blue-100 shrink-0">
@@ -75,7 +74,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </div>
         </div>
 
-        {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
           <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest px-3 pb-2">
             Management
@@ -101,11 +99,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           })}
         </nav>
 
-        {/* User + logout */}
         <div className="px-3 py-4 border-t border-slate-100">
-          <div className="px-3 py-2 mb-1">
-            <p className="text-sm font-semibold text-slate-800 truncate">{adminName}</p>
-            <p className="text-[11px] text-slate-400 mt-0.5">Administrator</p>
+          <div className="px-3 py-2 mb-1 flex items-center justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-800 truncate">{adminName}</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">Administrator</p>
+            </div>
+            <NotificationBell />
           </div>
           <button
             onClick={handleLogout}
@@ -117,14 +117,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
       </aside>
 
-      {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
         <header className="lg:hidden sticky top-0 z-10 bg-white border-b border-slate-200 px-4 py-3 flex items-center gap-3">
           <button onClick={() => setSidebarOpen(true)}
             className="p-2 rounded-lg text-slate-500 hover:bg-slate-100">
             <Menu size={18} />
           </button>
-          <span className="text-sm font-semibold text-slate-800">Admin Portal</span>
+          <span className="text-sm font-semibold text-slate-800 flex-1">Admin Portal</span>
+          <NotificationBell />
         </header>
 
         <main className="flex-1 overflow-y-auto">

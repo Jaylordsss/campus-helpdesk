@@ -54,7 +54,6 @@ export default function AdminInquiriesPage() {
     if (!response.trim()) return
     setSending(true)
     setErrorMsg('')
-
     try {
       if (sendEmail) {
         const res = await fetch('/api/send-email', {
@@ -65,6 +64,7 @@ export default function AdminInquiriesPage() {
             response: response.trim(),
             studentEmail: inquiry.profiles?.email,
             studentName: inquiry.profiles?.name,
+            studentId: inquiry.student_id,
             adminName: adminName || 'Help Desk Admin',
           })
         })
@@ -76,6 +76,21 @@ export default function AdminInquiriesPage() {
           .from('inquiries')
           .update({ response: response.trim(), status: 'resolved' })
           .eq('id', inquiry.id)
+
+        // Still send in-app notification even without email
+        await fetch('/api/notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: inquiry.student_id,
+            title: 'Your inquiry has been answered',
+            message: response.trim().length > 80
+              ? response.trim().substring(0, 80) + '...'
+              : response.trim(),
+            type: 'response',
+            link: '/dashboard/inquiries',
+          })
+        })
       }
 
       setSuccessId(inquiry.id)
@@ -83,11 +98,9 @@ export default function AdminInquiriesPage() {
       setResponse('')
       setActiveId(null)
       await fetchInquiries()
-
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to send'
       setErrorMsg(msg)
-      console.error(err)
     } finally {
       setSending(false)
     }
@@ -102,24 +115,19 @@ export default function AdminInquiriesPage() {
     await fetchInquiries()
   }
 
-  const filtered = inquiries.filter(i =>
-    filter === 'ALL' || i.status === filter
-  )
+  const filtered = inquiries.filter(i => filter === 'ALL' || i.status === filter)
   const pendingCount = inquiries.filter(i => i.status === 'pending').length
   const resolvedCount = inquiries.filter(i => i.status === 'resolved').length
 
   return (
     <div className="space-y-6">
-
-      {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Inquiries</h1>
         <p className="text-sm text-slate-400 mt-1">
-          Respond to student concerns — email notification sent automatically
+          Respond to student concerns — email and notification sent automatically
         </p>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-3 gap-3">
         <div className="bg-white rounded-xl border border-slate-100 p-4">
           <p className="text-2xl font-bold text-slate-900">{inquiries.length}</p>
@@ -135,7 +143,6 @@ export default function AdminInquiriesPage() {
         </div>
       </div>
 
-      {/* Filter tabs */}
       <div className="flex items-center gap-2">
         {(['ALL', 'pending', 'resolved'] as const).map(f => (
           <button
@@ -154,14 +161,12 @@ export default function AdminInquiriesPage() {
         ))}
       </div>
 
-      {/* Global error */}
       {errorMsg && (
         <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3">
           <p className="text-xs text-red-600 font-medium">{errorMsg}</p>
         </div>
       )}
 
-      {/* Inquiry list */}
       {loading ? (
         <div className="flex justify-center py-12">
           <div className="w-6 h-6 border-[3px] border-slate-200 border-t-slate-500 rounded-full animate-spin" />
@@ -176,17 +181,15 @@ export default function AdminInquiriesPage() {
           {filtered.map(inquiry => (
             <div key={inquiry.id} className="bg-white rounded-2xl border border-slate-100 p-5">
 
-              {/* Success notification */}
               {successId === inquiry.id && (
                 <div className="mb-3 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-2.5 flex items-center gap-2">
                   <Mail size={14} className="text-emerald-600 shrink-0" />
                   <p className="text-xs font-semibold text-emerald-700">
-                    Response sent{sendEmail ? ` and email delivered to ${inquiry.profiles?.email}` : ''}
+                    Response sent{sendEmail ? ` and email delivered to ${inquiry.profiles?.email}` : ' with in-app notification'}
                   </p>
                 </div>
               )}
 
-              {/* Student info + status */}
               <div className="flex items-start justify-between gap-3 mb-3">
                 <div className="flex items-center gap-3">
                   <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
@@ -222,13 +225,11 @@ export default function AdminInquiriesPage() {
                 </span>
               </div>
 
-              {/* Student message */}
               <div className="bg-slate-50 rounded-xl px-4 py-3 mb-3">
                 <p className="text-xs font-semibold text-slate-400 mb-1">Student message</p>
                 <p className="text-sm text-slate-700">{inquiry.message}</p>
               </div>
 
-              {/* Previous response */}
               {inquiry.response && activeId !== inquiry.id && (
                 <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3 mb-3">
                   <p className="text-xs font-semibold text-emerald-600 mb-1">Your response</p>
@@ -236,7 +237,6 @@ export default function AdminInquiriesPage() {
                 </div>
               )}
 
-              {/* Response form */}
               {activeId === inquiry.id && (
                 <div className="space-y-3 mb-3">
                   <textarea
@@ -246,8 +246,6 @@ export default function AdminInquiriesPage() {
                     rows={4}
                     className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-slate-400 focus:outline-none resize-none"
                   />
-
-                  {/* Email toggle */}
                   <label className="flex items-center gap-3 cursor-pointer">
                     <div
                       onClick={() => setSendEmail(!sendEmail)}
@@ -264,12 +262,11 @@ export default function AdminInquiriesPage() {
                       <span className="text-xs font-medium text-slate-600">
                         {sendEmail
                           ? `Send email to ${inquiry.profiles?.email}`
-                          : 'No email notification'
+                          : 'In-app notification only'
                         }
                       </span>
                     </div>
                   </label>
-
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleRespond(inquiry)}
@@ -284,7 +281,7 @@ export default function AdminInquiriesPage() {
                       ) : (
                         <>
                           <Send size={13} />
-                          {sendEmail ? 'Send Response + Email' : 'Send Response Only'}
+                          {sendEmail ? 'Send Response + Email' : 'Send Response + Notification'}
                         </>
                       )}
                     </button>
@@ -298,7 +295,6 @@ export default function AdminInquiriesPage() {
                 </div>
               )}
 
-              {/* Date + actions */}
               <div className="flex items-center justify-between mt-2">
                 <p className="text-xs text-slate-400">
                   {new Date(inquiry.created_at).toLocaleDateString('en-PH', {

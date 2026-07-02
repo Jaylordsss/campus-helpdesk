@@ -9,6 +9,7 @@ import {
   Menu, GraduationCap, Bot, ChevronRight,
   HelpCircle
 } from 'lucide-react'
+import NotificationBell from '@/components/NotificationBell'
 
 const navItems = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -45,7 +46,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     router.push('/login')
   }
 
-  // ISAP = red, MCNP = blue
   const isISAP = profile?.school === 'ISAP'
   const activeClass = isISAP
     ? 'bg-red-50 text-red-700 font-semibold'
@@ -62,7 +62,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           onClick={() => setSidebarOpen(false)} />
       )}
 
-      {/* Sidebar */}
       <aside className={`
         fixed top-0 left-0 h-full w-56 bg-white border-r border-slate-200 z-30 flex flex-col
         transition-transform duration-200
@@ -70,7 +69,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         lg:translate-x-0 lg:static lg:z-auto
       `}>
 
-        {/* Logo */}
         <div className="px-4 py-5 border-b border-slate-100">
           <div className="flex items-center gap-3">
             <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${logoIconBg}`}>
@@ -85,7 +83,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </div>
 
-        {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
           {navItems.map((item) => {
             const Icon = item.icon
@@ -105,11 +102,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           })}
         </nav>
 
-        {/* User + logout */}
         <div className="px-3 py-4 border-t border-slate-100">
-          <div className="px-3 py-2 mb-1">
-            <p className="text-sm font-semibold text-slate-800 truncate">{profile?.name || 'Student'}</p>
-            <p className="text-[11px] text-slate-400 mt-0.5">{profile?.school} Student</p>
+          <div className="px-3 py-2 mb-1 flex items-center justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-800 truncate">
+                {profile?.name || 'Student'}
+              </p>
+              <p className="text-[11px] text-slate-400 mt-0.5">{profile?.school} Student</p>
+            </div>
+            <NotificationBell />
           </div>
           <button
             onClick={handleLogout}
@@ -121,21 +122,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
-      {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
 
-        {/* Mobile header */}
         <header className="lg:hidden sticky top-0 z-10 bg-white border-b border-slate-200 px-4 py-3 flex items-center gap-3">
           <button onClick={() => setSidebarOpen(true)}
-            className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 transition-all">
+            className="p-2 rounded-lg text-slate-500 hover:bg-slate-100">
             <Menu size={18} />
           </button>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-1">
             <div className={`w-6 h-6 rounded flex items-center justify-center ${logoIconBg}`}>
               <GraduationCap size={12} className={logoIconColor} />
             </div>
-            <span className="text-sm font-semibold text-slate-800">{profile?.school} Help Desk</span>
+            <span className="text-sm font-semibold text-slate-800">
+              {profile?.school} Help Desk
+            </span>
           </div>
+          <NotificationBell />
         </header>
 
         <main className="flex-1 overflow-y-auto">
