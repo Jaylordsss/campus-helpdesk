@@ -18,6 +18,7 @@ export default function IDCardPage() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
   const [qrDataUrl, setQrDataUrl] = useState('')
+  const [downloading, setDownloading] = useState(false)
   const cardRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -32,9 +33,7 @@ export default function IDCardPage() {
         .single()
       if (data) {
         setProfile(data)
-        if (data.student_id) {
-          generateQR(data.student_id)
-        }
+        if (data.student_id) generateQR(data.student_id)
       }
       setLoading(false)
     }
@@ -48,10 +47,7 @@ export default function IDCardPage() {
       const url = await QRCode.toDataURL(loginUrl, {
         width: 120,
         margin: 1,
-        color: {
-          dark: '#ffffff',
-          light: '#00000000',
-        }
+        color: { dark: '#ffffff', light: '#00000000' }
       })
       setQrDataUrl(url)
     } catch (err) {
@@ -61,13 +57,15 @@ export default function IDCardPage() {
 
   const handleDownload = async () => {
     if (!cardRef.current) return
+    setDownloading(true)
     try {
-      const html2canvas = (await import('html2canvas-pro')).default
-      const canvas = await html2canvas(cardRef.current, {
+      // @ts-expect-error html2canvas-pro types
+      const html2canvasPro = (await import('html2canvas-pro')).default
+      const canvas = await html2canvasPro(cardRef.current, {
         scale: 3,
-        backgroundColor: null,
         useCORS: true,
         allowTaint: true,
+        backgroundColor: null,
       })
       const link = document.createElement('a')
       link.download = `${profile?.name?.replace(/\s+/g, '-') || 'student'}-id-card.png`
@@ -75,19 +73,24 @@ export default function IDCardPage() {
       link.click()
     } catch (err) {
       console.error('Download failed:', err)
+    } finally {
+      setDownloading(false)
     }
   }
 
   const isISAP = profile?.school === 'ISAP'
+  const gradientBg = isISAP
+    ? 'linear-gradient(135deg, #7f1d1d 0%, #991b1b 40%, #b91c1c 100%)'
+    : 'linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 40%, #2563eb 100%)'
+  const currentYear = new Date().getFullYear()
+  const schoolYear = `${currentYear}-${currentYear + 1}`
   const schoolFull = isISAP
     ? 'International School of Asia and the Pacific'
     : 'Medical Colleges of Northern Philippines'
-  const currentYear = new Date().getFullYear()
-  const schoolYear = `${currentYear}-${currentYear + 1}`
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '16rem' }}>
         <div className="w-6 h-6 border-[3px] border-slate-200 border-t-slate-500 rounded-full animate-spin" />
       </div>
     )
@@ -96,232 +99,284 @@ export default function IDCardPage() {
   return (
     <div className="max-w-2xl mx-auto space-y-8">
 
-      {/* Header */}
       <div>
         <h1 className="text-2xl font-bold" style={{ color: 'var(--text)' }}>
           Student ID Card
         </h1>
         <p className="text-sm text-slate-500 mt-1">
-          Your digital ID card — scan the QR code to log in instantly
+          Download your digital ID · Upload PNG on login to auto-fill Student ID
         </p>
       </div>
 
-      {/* Missing info warning */}
       {(!profile?.student_id || !profile?.course) && (
-        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-2xl p-4">
-          <p className="text-sm font-semibold text-amber-700 dark:text-amber-400 mb-1">
+        <div style={{
+          background: '#fffbeb',
+          border: '1px solid #fde68a',
+          borderRadius: '16px',
+          padding: '16px'
+        }}>
+          <p style={{ fontSize: '14px', fontWeight: 600, color: '#92400e', marginBottom: '4px' }}>
             Incomplete information
           </p>
-          <p className="text-xs text-amber-600 dark:text-amber-500">
-            Your Student ID number or course is not yet assigned.
-            Please contact the admin office to complete your profile.
+          <p style={{ fontSize: '12px', color: '#b45309' }}>
+            Your Student ID or course is not yet assigned. Please contact the admin office.
           </p>
         </div>
       )}
 
       {/* ID Card */}
-      <div className="flex justify-center">
+      <div style={{ display: 'flex', justifyContent: 'center' }}>
         <div
           ref={cardRef}
-          className="w-[400px] rounded-3xl overflow-hidden"
           style={{
-            background: isISAP
-              ? 'linear-gradient(135deg, #7f1d1d 0%, #991b1b 40%, #b91c1c 100%)'
-              : 'linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 40%, #2563eb 100%)',
+            width: '400px',
+            borderRadius: '24px',
+            overflow: 'hidden',
+            background: gradientBg,
             boxShadow: '0 25px 50px rgba(0,0,0,0.4)',
+            fontFamily: 'Arial, sans-serif',
           }}
         >
-          {/* Top header */}
-          <div className="px-6 pt-6 pb-4">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center shrink-0">
-                  <GraduationCap size={22} className="text-white" />
+          {/* Header */}
+          <div style={{ padding: '24px 24px 16px' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '40px', height: '40px',
+                  background: 'rgba(255,255,255,0.2)',
+                  borderRadius: '12px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <GraduationCap size={22} color="white" />
                 </div>
                 <div>
-                  <p className="text-white font-black text-xl leading-none tracking-wide">
+                  <div style={{ color: '#ffffff', fontWeight: 900, fontSize: '22px', lineHeight: '1' }}>
                     {profile?.school}
-                  </p>
-                  <p className="text-white/60 text-[9px] font-medium leading-tight max-w-[180px] mt-0.5">
+                  </div>
+                  <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: '9px', fontWeight: 500, maxWidth: '180px', lineHeight: '1.3', marginTop: '2px' }}>
                     {schoolFull}
-                  </p>
+                  </div>
                 </div>
               </div>
-              <div className="text-right">
-                <p className="text-white/50 text-[8px] font-semibold uppercase tracking-widest">
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '8px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1px' }}>
                   School Year
-                </p>
-                <p className="text-white font-bold text-sm">{schoolYear}</p>
+                </div>
+                <div style={{ color: '#ffffff', fontWeight: 700, fontSize: '13px' }}>
+                  {schoolYear}
+                </div>
               </div>
             </div>
-
-            {/* Thin divider */}
-            <div className="mt-4 h-px bg-white/20" />
+            <div style={{ marginTop: '16px', height: '1px', background: 'rgba(255,255,255,0.2)' }} />
           </div>
 
-          {/* Card body */}
-          <div className="px-6 pb-4 flex items-start gap-5">
-
-            {/* Photo placeholder */}
-            <div
-              className="w-24 h-28 rounded-2xl flex flex-col items-center justify-center shrink-0 border-2 border-white/30"
-              style={{ background: 'rgba(255,255,255,0.12)' }}
-            >
-              <GraduationCap size={28} className="text-white/50 mb-1" />
-              <p className="text-white/40 text-[8px] font-medium text-center px-1 leading-tight">
+          {/* Body */}
+          <div style={{ padding: '0 24px 16px', display: 'flex', alignItems: 'flex-start', gap: '20px' }}>
+            <div style={{
+              width: '90px', height: '110px',
+              borderRadius: '16px',
+              background: 'rgba(255,255,255,0.12)',
+              border: '2px solid rgba(255,255,255,0.25)',
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              <GraduationCap size={26} color="rgba(255,255,255,0.4)" />
+              <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '8px', fontWeight: 600, marginTop: '4px', textAlign: 'center' }}>
                 PHOTO
-              </p>
+              </div>
             </div>
 
-            {/* Info */}
-            <div className="flex-1 min-w-0 pt-1">
-              <p className="text-white/50 text-[8px] font-bold uppercase tracking-widest mb-0.5">
+            <div style={{ flex: 1, minWidth: 0, paddingTop: '4px' }}>
+              <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '8px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '2px' }}>
                 Full Name
-              </p>
-              <p className="text-white font-bold text-base leading-tight mb-3">
+              </div>
+              <div style={{ color: '#ffffff', fontWeight: 700, fontSize: '15px', lineHeight: '1.2', marginBottom: '12px' }}>
                 {profile?.name || 'Student Name'}
-              </p>
+              </div>
 
-              <p className="text-white/50 text-[8px] font-bold uppercase tracking-widest mb-0.5">
+              <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '8px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '2px' }}>
                 Student ID
-              </p>
-              <p className="text-white font-black text-2xl tracking-widest mb-3 font-mono">
+              </div>
+              <div style={{ color: '#ffffff', fontWeight: 900, fontSize: '22px', letterSpacing: '4px', fontFamily: 'monospace', marginBottom: '12px' }}>
                 {profile?.student_id || '____-____'}
-              </p>
+              </div>
 
-              <p className="text-white/50 text-[8px] font-bold uppercase tracking-widest mb-0.5">
+              <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '8px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '2px' }}>
                 Program
-              </p>
-              <p className="text-white text-xs font-semibold leading-tight mb-3">
+              </div>
+              <div style={{ color: '#ffffff', fontSize: '11px', fontWeight: 600, lineHeight: '1.3', marginBottom: '10px' }}>
                 {profile?.course || 'Not assigned'}
-              </p>
+              </div>
 
-              <div className="flex items-center gap-2">
-                <span className="bg-white/20 px-2.5 py-1 rounded-lg text-white text-[10px] font-bold">
-                  {profile?.year_level || '1st Year'}
-                </span>
-                <span className="bg-white/20 px-2.5 py-1 rounded-lg text-white text-[10px] font-bold">
-                  Student
-                </span>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ background: 'rgba(255,255,255,0.2)', padding: '4px 10px', borderRadius: '8px' }}>
+                  <span style={{ color: '#ffffff', fontSize: '10px', fontWeight: 700 }}>
+                    {profile?.year_level || '1st Year'}
+                  </span>
+                </div>
+                <div style={{ background: 'rgba(255,255,255,0.2)', padding: '4px 10px', borderRadius: '8px' }}>
+                  <span style={{ color: '#ffffff', fontSize: '10px', fontWeight: 700 }}>
+                    Student
+                  </span>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* QR + footer */}
-          <div
-            className="mx-4 mb-4 px-4 py-4 rounded-2xl flex items-center justify-between gap-4"
-            style={{ background: 'rgba(0,0,0,0.3)' }}
-          >
-            {/* Left info */}
-            <div className="flex-1 space-y-2">
-              <div>
-                <p className="text-white/40 text-[8px] font-bold uppercase tracking-widest">
+          {/* Footer with QR */}
+          <div style={{
+            margin: '0 16px 16px',
+            background: 'rgba(0,0,0,0.3)',
+            borderRadius: '16px',
+            padding: '16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '16px',
+          }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ marginBottom: '8px' }}>
+                <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '8px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>
                   Email
-                </p>
-                <p className="text-white/70 text-[10px] font-medium truncate">
+                </div>
+                <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '10px', fontWeight: 500 }}>
                   {profile?.email}
-                </p>
+                </div>
               </div>
-              <div>
-                <p className="text-white/40 text-[8px] font-bold uppercase tracking-widest">
+              <div style={{ marginBottom: '8px' }}>
+                <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '8px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>
                   Campus
-                </p>
-                <p className="text-white/70 text-[10px] font-medium">
+                </div>
+                <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '10px', fontWeight: 500 }}>
                   Alimanao, Penablanca, Cagayan
-                </p>
+                </div>
               </div>
-              <div className="pt-1">
-                <p className="text-white/40 text-[8px] font-medium">
-                  Scan QR to log in to the Help Desk
-                </p>
+              <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '8px', marginTop: '4px' }}>
+                {profile?.student_id
+                  ? 'Upload this PNG on login to auto-fill Student ID'
+                  : 'Contact admin to get your Student ID'
+                }
               </div>
             </div>
 
-            {/* QR Code */}
-            <div className="shrink-0">
-              {qrDataUrl ? (
-                <div
-                  className="w-20 h-20 rounded-xl flex items-center justify-center p-1"
-                  style={{ background: 'rgba(255,255,255,0.15)' }}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={qrDataUrl}
-                    alt="QR Code"
-                    className="w-full h-full"
-                    style={{ imageRendering: 'pixelated' }}
-                  />
-                </div>
-              ) : (
-                <div
-                  className="w-20 h-20 rounded-xl flex items-center justify-center"
-                  style={{ background: 'rgba(255,255,255,0.15)' }}
-                >
-                  <p className="text-white/40 text-[8px] text-center leading-tight px-1">
-                    No Student ID set
-                  </p>
-                </div>
-              )}
-            </div>
+            {/* QR Code — only show if student_id exists */}
+            {profile?.student_id && qrDataUrl ? (
+              <div style={{
+                width: '80px', height: '80px',
+                background: 'rgba(255,255,255,0.15)',
+                borderRadius: '12px',
+                padding: '6px',
+                flexShrink: 0,
+              }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={qrDataUrl}
+                  alt="QR Code"
+                  style={{ width: '100%', height: '100%', imageRendering: 'pixelated' }}
+                />
+              </div>
+            ) : profile?.student_id ? (
+              <div style={{
+                width: '80px', height: '80px',
+                background: 'rgba(255,255,255,0.1)',
+                borderRadius: '12px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '8px', textAlign: 'center', padding: '4px' }}>
+                  Generating...
+                </span>
+              </div>
+            ) : (
+              <div style={{
+                width: '80px', height: '80px',
+                background: 'rgba(255,255,255,0.08)',
+                borderRadius: '12px',
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0,
+                padding: '6px',
+              }}>
+                <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '8px', textAlign: 'center', lineHeight: '1.4' }}>
+                  No Student ID assigned
+                </span>
+              </div>
+            )}
           </div>
 
-          {/* Barcode strip */}
-          <div className="px-6 pb-6">
-            <div className="flex items-end gap-px h-6 justify-center mb-1">
-              {Array.from({ length: 60 }).map((_, i) => (
+          {/* Barcode */}
+          <div style={{ padding: '0 24px 24px' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '1.5px', height: '28px', justifyContent: 'center', marginBottom: '4px' }}>
+              {Array.from({ length: 55 }).map((_, i) => (
                 <div
                   key={i}
-                  className="bg-white/25 rounded-sm"
                   style={{
+                    background: 'rgba(255,255,255,0.25)',
+                    borderRadius: '1px',
                     width: i % 4 === 0 ? '3px' : '1.5px',
                     height: `${((i * 7 + 13) % 40) + 60}%`,
                   }}
                 />
               ))}
             </div>
-            <p className="text-center text-white/30 text-[8px] font-mono tracking-[0.3em]">
+            <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.25)', fontSize: '8px', fontFamily: 'monospace', letterSpacing: '4px' }}>
               {profile?.student_id || 'CAMPUS-HELPDESK'}
-            </p>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Download button */}
-      <div className="flex justify-center">
+      <div style={{ display: 'flex', justifyContent: 'center' }}>
         <button
           onClick={handleDownload}
-          className={`flex items-center gap-2 px-6 py-3 text-white text-sm font-semibold rounded-xl transition-all shadow-lg ${
-            isISAP
-              ? 'bg-red-600 hover:bg-red-700'
-              : 'bg-blue-600 hover:bg-blue-700'
-          }`}
+          disabled={downloading}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '12px 24px',
+            background: isISAP ? '#dc2626' : '#2563eb',
+            color: '#ffffff',
+            fontSize: '14px',
+            fontWeight: 600,
+            borderRadius: '12px',
+            border: 'none',
+            cursor: downloading ? 'not-allowed' : 'pointer',
+            opacity: downloading ? 0.7 : 1,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+          }}
         >
           <Download size={17} />
-          Download ID Card as PNG
+          {downloading ? 'Downloading...' : 'Download ID Card as PNG'}
         </button>
       </div>
 
-      {/* How to use QR */}
+      {/* How to use */}
       <div
         className="rounded-2xl border p-5"
         style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}
       >
-        <p className="text-xs font-bold uppercase tracking-widest mb-3"
-          style={{ color: 'var(--text-muted)' }}>
-          How to use the QR Code
+        <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>
+          How to use your ID Card
         </p>
         <div className="space-y-2.5">
           {[
             'Download your ID card as a PNG image.',
-            'Open the campus-helpdesk-phi.vercel.app on any device.',
-            'Scan the QR code on your ID card with your phone camera.',
-            'It will open the login page with your Student ID already filled in.',
-            'Just enter your password and tap Log in.',
+            'Go to the login page and click the Upload QR tab.',
+            'Upload the PNG — your Student ID is auto-filled.',
+            'Enter your password and click Log in.',
+            profile?.student_id
+              ? 'QR code is embedded in your card for quick login.'
+              : 'Contact admin to get your Student ID assigned.',
           ].map((note, i) => (
             <div key={i} className="flex items-start gap-3">
-              <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold text-white ${
-                isISAP ? 'bg-red-500' : 'bg-blue-500'
-              }`}>
+              <div
+                className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-white text-[10px] font-bold"
+                style={{ background: isISAP ? '#dc2626' : '#2563eb' }}
+              >
                 {i + 1}
               </div>
               <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
