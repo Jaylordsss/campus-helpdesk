@@ -9,13 +9,9 @@ export async function proxy(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
+        getAll() { return request.cookies.getAll() },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          )
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
           supabaseResponse = NextResponse.next({ request })
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
@@ -28,10 +24,16 @@ export async function proxy(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   const { pathname } = request.nextUrl
 
-  if (!user && (pathname.startsWith('/dashboard') || pathname.startsWith('/admin'))) {
-    return NextResponse.redirect(new URL('/login', request.url))
+  // Public routes — no auth needed
+  const publicRoutes = ['/visitor', '/login', '/signup', '/reset-password', '/api']
+  const isPublic = publicRoutes.some(r => pathname.startsWith(r))
+
+  // Protect dashboard and admin
+  if (!user && !isPublic && (pathname.startsWith('/dashboard') || pathname.startsWith('/admin'))) {
+    return NextResponse.redirect(new URL('/visitor', request.url))
   }
 
+  // If logged in and tries to access login/signup → redirect to dashboard
   if (user && (pathname === '/login' || pathname === '/signup')) {
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }
