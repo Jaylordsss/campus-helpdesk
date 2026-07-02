@@ -10,6 +10,7 @@ import {
   Megaphone
 } from 'lucide-react'
 import NotificationBell from '@/components/NotificationBell'
+import ThemeToggle from '@/components/ThemeToggle'
 
 const navItems = [
   { label: 'Dashboard', href: '/admin', icon: LayoutDashboard },
@@ -50,34 +51,51 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
-
+    <div
+      className="flex min-h-screen transition-colors duration-200"
+      style={{ backgroundColor: 'var(--bg)' }}
+    >
       {sidebarOpen && (
-        <div className="fixed inset-0 bg-black/40 z-20 lg:hidden"
-          onClick={() => setSidebarOpen(false)} />
+        <div
+          className="fixed inset-0 bg-black/50 z-20 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
       )}
 
-      <aside className={`
-        fixed top-0 left-0 h-full w-56 bg-white border-r border-slate-200 z-30 flex flex-col
-        transition-transform duration-200
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        lg:translate-x-0 lg:static lg:z-auto
-      `}>
-
-        <div className="px-4 py-5 border-b border-slate-100">
+      {/* Sidebar */}
+      <aside
+        className={`
+          fixed top-0 left-0 h-full w-56 z-30 flex flex-col
+          transition-transform duration-200
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+          lg:translate-x-0 lg:static lg:z-auto
+        `}
+        style={{
+          backgroundColor: 'var(--bg-sidebar)',
+          borderRight: '1px solid var(--border)',
+        }}
+      >
+        {/* Logo */}
+        <div className="px-4 py-5" style={{ borderBottom: '1px solid var(--border)' }}>
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-gradient-to-br from-red-100 to-blue-100 shrink-0">
-              <ShieldCheck size={16} className="text-slate-600" />
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-gradient-to-br from-red-100 to-blue-100 dark:from-red-950/50 dark:to-blue-950/50">
+              <ShieldCheck size={16} className="text-slate-600 dark:text-slate-300" />
             </div>
             <div className="min-w-0">
-              <p className="text-[10px] font-bold tracking-widest uppercase text-slate-500">Admin</p>
-              <p className="text-xs font-bold text-slate-900 truncate">Help Desk Portal</p>
+              <p className="text-[10px] font-bold tracking-widest uppercase" style={{ color: 'var(--text-faint)' }}>
+                Admin
+              </p>
+              <p className="text-xs font-bold truncate" style={{ color: 'var(--text)' }}>
+                Help Desk Portal
+              </p>
             </div>
           </div>
         </div>
 
+        {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest px-3 pb-2">
+          <p className="text-[10px] font-semibold uppercase tracking-widest px-3 pb-2"
+            style={{ color: 'var(--text-faint)' }}>
             Management
           </p>
           {navItems.map((item) => {
@@ -87,13 +105,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <button
                 key={item.href}
                 onClick={() => { router.push(item.href); setSidebarOpen(false) }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all
-                  ${active
-                    ? 'bg-slate-100 text-slate-900 font-semibold'
-                    : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800 font-medium'
-                  }`}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all font-medium ${
+                  active
+                    ? 'bg-black/5 dark:bg-white/10 font-semibold'
+                    : 'hover:bg-black/5 dark:hover:bg-white/5'
+                }`}
+                style={{ color: active ? 'var(--text)' : 'var(--text-muted)' }}
               >
-                <Icon size={15} className={active ? 'text-slate-700' : 'text-slate-400'} />
+                <Icon
+                  size={15}
+                  style={{ color: active ? 'var(--text)' : 'var(--text-faint)' }}
+                />
                 <span className="flex-1 text-left">{item.label}</span>
                 {active && <ChevronRight size={12} className="opacity-40" />}
               </button>
@@ -101,17 +123,26 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           })}
         </nav>
 
-        <div className="px-3 py-4 border-t border-slate-100">
+        {/* User + logout */}
+        <div className="px-3 py-4" style={{ borderTop: '1px solid var(--border)' }}>
           <div className="px-3 py-2 mb-1 flex items-center justify-between">
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-slate-800 truncate">{adminName}</p>
-              <p className="text-[11px] text-slate-400 mt-0.5">Administrator</p>
+              <p className="text-sm font-semibold truncate" style={{ color: 'var(--text)' }}>
+                {adminName}
+              </p>
+              <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-faint)' }}>
+                Administrator
+              </p>
             </div>
-            <NotificationBell />
+            <div className="flex items-center gap-1 shrink-0">
+              <ThemeToggle />
+              <NotificationBell />
+            </div>
           </div>
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/30 dark:hover:text-red-400"
+            style={{ color: 'var(--text-faint)' }}
           >
             <LogOut size={15} />
             Sign out
@@ -119,13 +150,26 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
       </aside>
 
+      {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="lg:hidden sticky top-0 z-10 bg-white border-b border-slate-200 px-4 py-3 flex items-center gap-3">
-          <button onClick={() => setSidebarOpen(true)}
-            className="p-2 rounded-lg text-slate-500 hover:bg-slate-100">
+        <header
+          className="lg:hidden sticky top-0 z-10 px-4 py-3 flex items-center gap-3 transition-colors duration-200"
+          style={{
+            backgroundColor: 'var(--bg-sidebar)',
+            borderBottom: '1px solid var(--border)',
+          }}
+        >
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5"
+            style={{ color: 'var(--text-muted)' }}
+          >
             <Menu size={18} />
           </button>
-          <span className="text-sm font-semibold text-slate-800 flex-1">Admin Portal</span>
+          <span className="text-sm font-semibold flex-1" style={{ color: 'var(--text)' }}>
+            Admin Portal
+          </span>
+          <ThemeToggle />
           <NotificationBell />
         </header>
 

@@ -10,6 +10,7 @@ import {
   HelpCircle, Megaphone
 } from 'lucide-react'
 import NotificationBell from '@/components/NotificationBell'
+import ThemeToggle from '@/components/ThemeToggle'
 
 const navItems = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -48,29 +49,50 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   const isISAP = profile?.school === 'ISAP'
+
   const activeClass = isISAP
-    ? 'bg-red-50 text-red-700 font-semibold'
-    : 'bg-blue-50 text-blue-700 font-semibold'
-  const logoIconBg = isISAP ? 'bg-red-100' : 'bg-blue-100'
-  const logoIconColor = isISAP ? 'text-red-600' : 'text-blue-600'
-  const schoolTextColor = isISAP ? 'text-red-600' : 'text-blue-600'
+    ? 'bg-red-50 text-red-700 font-semibold dark:bg-red-950/50 dark:text-red-400'
+    : 'bg-blue-50 text-blue-700 font-semibold dark:bg-blue-950/50 dark:text-blue-400'
+
+  const logoIconBg = isISAP
+    ? 'bg-red-100 dark:bg-red-950/50'
+    : 'bg-blue-100 dark:bg-blue-950/50'
+
+  const logoIconColor = isISAP
+    ? 'text-red-600 dark:text-red-400'
+    : 'text-blue-600 dark:text-blue-400'
+
+  const schoolTextColor = isISAP
+    ? 'text-red-600 dark:text-red-400'
+    : 'text-blue-600 dark:text-blue-400'
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
-
+    <div
+      className="flex min-h-screen transition-colors duration-200"
+      style={{ backgroundColor: 'var(--bg)' }}
+    >
       {sidebarOpen && (
-        <div className="fixed inset-0 bg-black/40 z-20 lg:hidden"
-          onClick={() => setSidebarOpen(false)} />
+        <div
+          className="fixed inset-0 bg-black/50 z-20 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
       )}
 
-      <aside className={`
-        fixed top-0 left-0 h-full w-56 bg-white border-r border-slate-200 z-30 flex flex-col
-        transition-transform duration-200
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        lg:translate-x-0 lg:static lg:z-auto
-      `}>
-
-        <div className="px-4 py-5 border-b border-slate-100">
+      {/* Sidebar */}
+      <aside
+        className={`
+          fixed top-0 left-0 h-full w-56 z-30 flex flex-col
+          transition-transform duration-200
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+          lg:translate-x-0 lg:static lg:z-auto
+        `}
+        style={{
+          backgroundColor: 'var(--bg-sidebar)',
+          borderRight: '1px solid var(--border)',
+        }}
+      >
+        {/* Logo */}
+        <div className="px-4 py-5" style={{ borderBottom: '1px solid var(--border)' }}>
           <div className="flex items-center gap-3">
             <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${logoIconBg}`}>
               <GraduationCap size={16} className={logoIconColor} />
@@ -79,11 +101,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <p className={`text-xs font-bold tracking-widest uppercase truncate ${schoolTextColor}`}>
                 {profile?.school || '...'}
               </p>
-              <p className="text-[11px] text-slate-400">Help Desk</p>
+              <p className="text-[11px]" style={{ color: 'var(--text-faint)' }}>
+                Help Desk
+              </p>
             </div>
           </div>
         </div>
 
+        {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
           {navItems.map((item) => {
             const Icon = item.icon
@@ -92,10 +117,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <button
                 key={item.href}
                 onClick={() => { router.push(item.href); setSidebarOpen(false) }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all
-                  ${active ? activeClass : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800 font-medium'}`}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
+                  active ? activeClass : 'font-medium hover:bg-black/5 dark:hover:bg-white/5'
+                }`}
+                style={!active ? { color: 'var(--text-muted)' } : {}}
               >
-                <Icon size={15} className={active ? '' : 'text-slate-400'} />
+                <Icon
+                  size={15}
+                  style={!active ? { color: 'var(--text-faint)' } : {}}
+                />
                 <span className="flex-1 text-left">{item.label}</span>
                 {active && <ChevronRight size={12} className="opacity-40" />}
               </button>
@@ -103,19 +133,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           })}
         </nav>
 
-        <div className="px-3 py-4 border-t border-slate-100">
+        {/* User + logout */}
+        <div className="px-3 py-4" style={{ borderTop: '1px solid var(--border)' }}>
           <div className="px-3 py-2 mb-1 flex items-center justify-between">
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-slate-800 truncate">
+              <p className="text-sm font-semibold truncate" style={{ color: 'var(--text)' }}>
                 {profile?.name || 'Student'}
               </p>
-              <p className="text-[11px] text-slate-400 mt-0.5">{profile?.school} Student</p>
+              <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-faint)' }}>
+                {profile?.school} Student
+              </p>
             </div>
-            <NotificationBell />
+            <div className="flex items-center gap-1 shrink-0">
+              <ThemeToggle />
+              <NotificationBell />
+            </div>
           </div>
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/30 dark:hover:text-red-400"
+            style={{ color: 'var(--text-faint)' }}
           >
             <LogOut size={15} />
             Sign out
@@ -123,21 +160,33 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
+      {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
 
-        <header className="lg:hidden sticky top-0 z-10 bg-white border-b border-slate-200 px-4 py-3 flex items-center gap-3">
-          <button onClick={() => setSidebarOpen(true)}
-            className="p-2 rounded-lg text-slate-500 hover:bg-slate-100">
+        {/* Mobile header */}
+        <header
+          className="lg:hidden sticky top-0 z-10 px-4 py-3 flex items-center gap-3 transition-colors duration-200"
+          style={{
+            backgroundColor: 'var(--bg-sidebar)',
+            borderBottom: '1px solid var(--border)',
+          }}
+        >
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="p-2 rounded-lg transition-all hover:bg-black/5 dark:hover:bg-white/5"
+            style={{ color: 'var(--text-muted)' }}
+          >
             <Menu size={18} />
           </button>
           <div className="flex items-center gap-2 flex-1">
             <div className={`w-6 h-6 rounded flex items-center justify-center ${logoIconBg}`}>
               <GraduationCap size={12} className={logoIconColor} />
             </div>
-            <span className="text-sm font-semibold text-slate-800">
+            <span className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
               {profile?.school} Help Desk
             </span>
           </div>
+          <ThemeToggle />
           <NotificationBell />
         </header>
 
