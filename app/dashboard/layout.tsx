@@ -7,12 +7,13 @@ import {
   LayoutDashboard, BookOpen, CreditCard,
   Map, MessageSquare, Star, LogOut,
   Menu, GraduationCap, Bot, ChevronRight,
-  HelpCircle
+  HelpCircle, Megaphone
 } from 'lucide-react'
 import NotificationBell from '@/components/NotificationBell'
 
 const navItems = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { label: 'Announcements', href: '/dashboard/announcements', icon: Megaphone },
   { label: 'AI Assistant', href: '/dashboard/chat', icon: Bot },
   { label: 'Courses', href: '/dashboard/courses', icon: BookOpen },
   { label: 'Tuition', href: '/dashboard/tuition', icon: CreditCard },

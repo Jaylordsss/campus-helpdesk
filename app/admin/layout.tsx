@@ -6,12 +6,14 @@ import { createClient } from '@/src/lib/supabase/client'
 import {
   LayoutDashboard, Users, BookOpen, CreditCard,
   MapPin, MessageSquare, Star, HelpCircle,
-  TrendingUp, LogOut, Menu, ShieldCheck, ChevronRight
+  TrendingUp, LogOut, Menu, ShieldCheck, ChevronRight,
+  Megaphone
 } from 'lucide-react'
 import NotificationBell from '@/components/NotificationBell'
 
 const navItems = [
   { label: 'Dashboard', href: '/admin', icon: LayoutDashboard },
+  { label: 'Announcements', href: '/admin/announcements', icon: Megaphone },
   { label: 'Users', href: '/admin/users', icon: Users },
   { label: 'Courses', href: '/admin/courses', icon: BookOpen },
   { label: 'Tuition', href: '/admin/tuition', icon: CreditCard },

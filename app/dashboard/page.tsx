@@ -6,7 +6,7 @@ import { createClient } from '@/src/lib/supabase/client'
 import {
   Bot, BookOpen, CreditCard, Map,
   MessageSquare, Star, ChevronRight,
-  Clock, Wifi
+  Clock, Wifi, Megaphone
 } from 'lucide-react'
 
 type Profile = { name: string; school: string }
@@ -66,6 +66,14 @@ export default function DashboardPage() {
   const dotClass = isISAP ? 'bg-red-400' : 'bg-blue-400'
 
   const cards = [
+    {
+      title: 'Announcements',
+      desc: 'Latest updates, events, and notices from your school.',
+      icon: Megaphone,
+      href: '/dashboard/announcements',
+      iconBg: 'bg-amber-100',
+      iconColor: 'text-amber-600',
+    },
     {
       title: 'AI Assistant',
       desc: 'Ask anything about campus, courses, tuition, and offices.',
