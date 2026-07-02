@@ -40,7 +40,7 @@ export default function LoginPage() {
     setForgotLoading(true)
     const supabase = createClient()
     const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: `https://campus-helpdesk-phi.vercel.app/reset-password`,
     })
     if (error) {
       setForgotError(error.message)
