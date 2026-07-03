@@ -59,7 +59,6 @@ export default function IDCardPage() {
     if (!cardRef.current) return
     setDownloading(true)
     try {
-      // @ts-expect-error html2canvas-pro types
       const html2canvasPro = (await import('html2canvas-pro')).default
       const canvas = await html2canvasPro(cardRef.current, {
         scale: 3,
