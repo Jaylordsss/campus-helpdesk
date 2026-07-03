@@ -46,6 +46,7 @@ function LoginContent() {
     setQrStatus('scanning')
     setQrMessage('Reading QR code...')
     setScannedStudentId('')
+    setPassword('')
 
     try {
       // Use jsqr which works reliably on both localhost and Vercel
@@ -474,15 +475,16 @@ function LoginContent() {
                     </div>
                     <div className="relative">
                       <input
-                        type={showPassword ? 'text' : 'password'}
-                        required
-                        value={password}
-                        onChange={e => setPassword(e.target.value)}
-                        placeholder="Enter your password"
-                        autoFocus
-                        className="w-full rounded-xl border px-4 py-2.5 pr-11 text-sm focus:outline-none"
-                        style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-                      />
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      placeholder="Enter your password"
+                      autoFocus
+                      autoComplete="new-password"
+                      className="w-full rounded-xl border px-4 py-2.5 pr-11 text-sm focus:outline-none"
+                      style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                    />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
