@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/src/lib/supabase/client'
-import { Download, GraduationCap } from 'lucide-react'
+import { Download, GraduationCap, QrCode } from 'lucide-react'
 
 type Profile = {
   id: string
@@ -45,8 +45,9 @@ export default function IDCardPage() {
       const QRCode = await import('qrcode')
       const loginUrl = `https://campus-helpdesk-phi.vercel.app/login?student_id=${encodeURIComponent(studentId)}`
       const url = await QRCode.toDataURL(loginUrl, {
-        width: 120,
-        margin: 1,
+        width: 400,
+        margin: 2,
+        errorCorrectionLevel: 'H',
         color: { dark: '#ffffff', light: '#00000000' }
       })
       setQrDataUrl(url)
@@ -77,6 +78,26 @@ export default function IDCardPage() {
     }
   }
 
+  const handleDownloadQR = async () => {
+    if (!profile?.student_id) return
+    try {
+      const QRCode = await import('qrcode')
+      const loginUrl = `https://campus-helpdesk-phi.vercel.app/login?student_id=${encodeURIComponent(profile.student_id)}`
+      const url = await QRCode.toDataURL(loginUrl, {
+        width: 400,
+        margin: 3,
+        errorCorrectionLevel: 'H',
+        color: { dark: '#000000', light: '#ffffff' }
+      })
+      const link = document.createElement('a')
+      link.download = `${profile?.name?.replace(/\s+/g, '-') || 'student'}-qr-code.png`
+      link.href = url
+      link.click()
+    } catch (err) {
+      console.error('QR download failed:', err)
+    }
+  }
+
   const isISAP = profile?.school === 'ISAP'
   const gradientBg = isISAP
     ? 'linear-gradient(135deg, #7f1d1d 0%, #991b1b 40%, #b91c1c 100%)'
@@ -86,6 +107,7 @@ export default function IDCardPage() {
   const schoolFull = isISAP
     ? 'International School of Asia and the Pacific'
     : 'Medical Colleges of Northern Philippines'
+  const accentColor = isISAP ? '#dc2626' : '#2563eb'
 
   if (loading) {
     return (
@@ -103,7 +125,7 @@ export default function IDCardPage() {
           Student ID Card
         </h1>
         <p className="text-sm text-slate-500 mt-1">
-          Download your digital ID · Upload PNG on login to auto-fill Student ID
+          Download your digital ID or QR code for quick login
         </p>
       </div>
 
@@ -254,19 +276,19 @@ export default function IDCardPage() {
               </div>
               <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '8px', marginTop: '4px' }}>
                 {profile?.student_id
-                  ? 'Upload this PNG on login to auto-fill Student ID'
+                  ? 'Download QR Code below for easy login'
                   : 'Contact admin to get your Student ID'
                 }
               </div>
             </div>
 
-            {/* QR Code — only show if student_id exists */}
+            {/* QR Code */}
             {profile?.student_id && qrDataUrl ? (
               <div style={{
-                width: '80px', height: '80px',
+                width: '100px', height: '100px',
                 background: 'rgba(255,255,255,0.15)',
                 borderRadius: '12px',
-                padding: '6px',
+                padding: '4px',
                 flexShrink: 0,
               }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -278,7 +300,7 @@ export default function IDCardPage() {
               </div>
             ) : profile?.student_id ? (
               <div style={{
-                width: '80px', height: '80px',
+                width: '100px', height: '100px',
                 background: 'rgba(255,255,255,0.1)',
                 borderRadius: '12px',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -290,7 +312,7 @@ export default function IDCardPage() {
               </div>
             ) : (
               <div style={{
-                width: '80px', height: '80px',
+                width: '100px', height: '100px',
                 background: 'rgba(255,255,255,0.08)',
                 borderRadius: '12px',
                 display: 'flex', flexDirection: 'column',
@@ -327,8 +349,10 @@ export default function IDCardPage() {
         </div>
       </div>
 
-      {/* Download button */}
-      <div style={{ display: 'flex', justifyContent: 'center' }}>
+      {/* Download buttons */}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
+
+        {/* Download full ID card */}
         <button
           onClick={handleDownload}
           disabled={downloading}
@@ -337,7 +361,7 @@ export default function IDCardPage() {
             alignItems: 'center',
             gap: '8px',
             padding: '12px 24px',
-            background: isISAP ? '#dc2626' : '#2563eb',
+            background: accentColor,
             color: '#ffffff',
             fontSize: '14px',
             fontWeight: 600,
@@ -349,8 +373,32 @@ export default function IDCardPage() {
           }}
         >
           <Download size={17} />
-          {downloading ? 'Downloading...' : 'Download ID Card as PNG'}
+          {downloading ? 'Downloading...' : 'Download ID Card'}
         </button>
+
+        {/* Download QR only */}
+        {profile?.student_id && (
+          <button
+            onClick={handleDownloadQR}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '12px 24px',
+              background: 'transparent',
+              color: accentColor,
+              fontSize: '14px',
+              fontWeight: 600,
+              borderRadius: '12px',
+              border: `2px solid ${accentColor}`,
+              cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+            }}
+          >
+            <QrCode size={17} />
+            Download QR Code Only
+          </button>
+        )}
       </div>
 
       {/* How to use */}
@@ -358,23 +406,22 @@ export default function IDCardPage() {
         className="rounded-2xl border p-5"
         style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}
       >
-        <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>
+        <p className="text-xs font-bold uppercase tracking-widest mb-3"
+          style={{ color: 'var(--text-muted)' }}>
           How to use your ID Card
         </p>
         <div className="space-y-2.5">
           {[
-            'Download your ID card as a PNG image.',
+            'Download your ID card as PNG or download the QR Code separately.',
             'Go to the login page and click the Upload QR tab.',
-            'Upload the PNG — your Student ID is auto-filled.',
+            'Upload the QR Code PNG — your Student ID is auto-filled.',
             'Enter your password and click Log in.',
-            profile?.student_id
-              ? 'QR code is embedded in your card for quick login.'
-              : 'Contact admin to get your Student ID assigned.',
+            'Use the QR Code Only download for best scanning results on mobile.',
           ].map((note, i) => (
             <div key={i} className="flex items-start gap-3">
               <div
                 className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-white text-[10px] font-bold"
-                style={{ background: isISAP ? '#dc2626' : '#2563eb' }}
+                style={{ background: accentColor }}
               >
                 {i + 1}
               </div>
