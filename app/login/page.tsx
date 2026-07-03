@@ -47,12 +47,11 @@ function LoginContent() {
     setQrMessage('Reading QR code...')
     setScannedStudentId('')
     setPassword('')
+    setError('')
 
     try {
-      // Use jsqr which works reliably on both localhost and Vercel
       const jsQR = (await import('jsqr')).default
 
-      // Read file as image
       const imageData = await new Promise<ImageData>((resolve, reject) => {
         const reader = new FileReader()
         reader.onload = (ev) => {
@@ -73,19 +72,17 @@ function LoginContent() {
         reader.readAsDataURL(file)
       })
 
-      // Scan QR code from image data
       const code = jsQR(imageData.data, imageData.width, imageData.height, {
         inversionAttempts: 'attemptBoth',
       })
 
       if (!code) {
         setQrStatus('error')
-        setQrMessage('Could not read QR code. Try downloading the QR Code Only PNG for better results.')
+        setQrMessage('Could not read QR code. Try using the QR Code Only PNG download for best results.')
         if (fileRef.current) fileRef.current.value = ''
         return
       }
 
-      // Parse student_id from URL
       try {
         const url = new URL(code.data)
         const sid = url.searchParams.get('student_id')
@@ -94,7 +91,7 @@ function LoginContent() {
           setScannedStudentId(decoded)
           setStudentId(decoded)
           setQrStatus('success')
-          setQrMessage(`Student ID found: ${decoded}`)
+          setQrMessage(`Student ID: ${decoded}`)
           setMode('student_id')
         } else {
           setQrStatus('error')
@@ -102,13 +99,12 @@ function LoginContent() {
         }
       } catch {
         setQrStatus('error')
-        setQrMessage('Invalid QR code format. Please use your campus ID card QR.')
+        setQrMessage('Invalid QR code. Please use your campus ID card QR.')
       }
-
     } catch (err) {
       console.error('QR scan error:', err)
       setQrStatus('error')
-      setQrMessage('Could not read QR code. Please try the QR Code Only download for best results.')
+      setQrMessage('Could not read QR code. Please try the QR Code Only download.')
     }
 
     if (fileRef.current) fileRef.current.value = ''
@@ -179,7 +175,6 @@ function LoginContent() {
     setForgotLoading(false)
   }
 
-  // Forgot password screen
   if (showForgot) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4"
@@ -190,12 +185,9 @@ function LoginContent() {
               style={{ backgroundColor: 'var(--bg-card)' }}>
               <GraduationCap size={28} className="text-slate-600 dark:text-slate-300" />
             </div>
-            <h1 className="text-2xl font-bold" style={{ color: 'var(--text)' }}>
-              Reset Password
-            </h1>
+            <h1 className="text-2xl font-bold" style={{ color: 'var(--text)' }}>Reset Password</h1>
             <p className="text-sm text-slate-400 mt-1">Smart Campus Help Desk</p>
           </div>
-
           <div className="rounded-2xl border p-6"
             style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
             {forgotSent ? (
@@ -206,13 +198,9 @@ function LoginContent() {
                   </svg>
                 </div>
                 <div>
-                  <p className="text-base font-bold" style={{ color: 'var(--text)' }}>
-                    Check your Gmail
-                  </p>
+                  <p className="text-base font-bold" style={{ color: 'var(--text)' }}>Check your Gmail</p>
                   <p className="text-xs text-slate-500 mt-2">Reset link sent to</p>
-                  <p className="text-sm font-bold mt-1" style={{ color: 'var(--text)' }}>
-                    {forgotEmail}
-                  </p>
+                  <p className="text-sm font-bold mt-1" style={{ color: 'var(--text)' }}>{forgotEmail}</p>
                 </div>
                 <div className="flex flex-col gap-2">
                   <button
@@ -244,8 +232,7 @@ function LoginContent() {
                 </p>
                 <form onSubmit={handleForgotPassword} className="space-y-4">
                   <div>
-                    <label className="block text-xs font-semibold mb-1.5"
-                      style={{ color: 'var(--text-muted)' }}>
+                    <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>
                       Email address
                     </label>
                     <input
@@ -284,18 +271,13 @@ function LoginContent() {
       style={{ backgroundColor: 'var(--bg)' }}>
       <div className="w-full max-w-sm">
 
-        {/* Header */}
         <div className="text-center mb-8">
           <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
             style={{ backgroundColor: 'var(--bg-card)' }}>
             <GraduationCap size={28} className="text-slate-600 dark:text-slate-300" />
           </div>
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--text)' }}>
-            Welcome back
-          </h1>
-          <p className="text-sm text-slate-400 mt-1">
-            Smart Campus Help Desk · ISAP and MCNP
-          </p>
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--text)' }}>Welcome back</h1>
+          <p className="text-sm text-slate-400 mt-1">Smart Campus Help Desk · ISAP and MCNP</p>
         </div>
 
         <div className="rounded-2xl border p-6 space-y-5"
@@ -304,11 +286,9 @@ function LoginContent() {
           {/* Mode toggle */}
           <div className="flex rounded-xl p-1 gap-1" style={{ backgroundColor: 'var(--bg)' }}>
             <button
-              onClick={() => { setMode('student_id'); setError('') }}
+              onClick={() => { setMode('student_id'); setError(''); setQrStatus('idle'); setScannedStudentId('') }}
               className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all ${
-                mode === 'student_id'
-                  ? 'bg-white dark:bg-slate-700 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-600'
+                mode === 'student_id' ? 'bg-white dark:bg-slate-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'
               }`}
               style={mode === 'student_id' ? { color: 'var(--text)' } : {}}
             >
@@ -316,17 +296,9 @@ function LoginContent() {
               Student ID
             </button>
             <button
-              onClick={() => {
-                setMode('qr')
-                setError('')
-                setQrStatus('idle')
-                setQrMessage('')
-                setScannedStudentId('')
-              }}
+              onClick={() => { setMode('qr'); setError(''); setQrStatus('idle'); setPassword('') }}
               className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all ${
-                mode === 'qr'
-                  ? 'bg-white dark:bg-slate-700 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-600'
+                mode === 'qr' ? 'bg-white dark:bg-slate-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'
               }`}
               style={mode === 'qr' ? { color: 'var(--text)' } : {}}
             >
@@ -336,9 +308,7 @@ function LoginContent() {
             <button
               onClick={() => { setMode('email'); setError('') }}
               className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all ${
-                mode === 'email'
-                  ? 'bg-white dark:bg-slate-700 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-600'
+                mode === 'email' ? 'bg-white dark:bg-slate-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'
               }`}
               style={mode === 'email' ? { color: 'var(--text)' } : {}}
             >
@@ -347,104 +317,170 @@ function LoginContent() {
             </button>
           </div>
 
-          
-
           {/* QR Upload mode */}
           {mode === 'qr' && (
             <div className="space-y-4">
 
-              {/* Upload area */}
-              <div
-                onClick={() => fileRef.current?.click()}
-                className="cursor-pointer rounded-2xl border-2 border-dashed p-8 text-center transition-all hover:border-slate-400"
-                style={{ borderColor: 'var(--border)' }}
-              >
-                <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3"
-                  style={{ backgroundColor: 'var(--bg)' }}>
-                  <Upload size={24} className="text-slate-400" />
-                </div>
-                <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
-                  Upload your ID card PNG
-                </p>
-                <p className="text-xs text-slate-400 mt-1">
-                  Click to select the downloaded ID card image
-                </p>
-                <div className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-xl transition-all">
-                  <QrCode size={13} />
-                  Choose Image
-                </div>
-              </div>
+              {/* Upload area — only show when idle or error */}
+              {(qrStatus === 'idle' || qrStatus === 'error') && (
+                <>
+                  <div
+                    onClick={() => fileRef.current?.click()}
+                    className="cursor-pointer rounded-2xl border-2 border-dashed p-8 text-center transition-all hover:border-slate-400"
+                    style={{ borderColor: 'var(--border)' }}
+                  >
+                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3"
+                      style={{ backgroundColor: 'var(--bg)' }}>
+                      <Upload size={24} className="text-slate-400" />
+                    </div>
+                    <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
+                      Upload your QR Code PNG
+                    </p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Use the QR Code Only download from your ID Card page
+                    </p>
+                    <div className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-xl transition-all">
+                      <QrCode size={13} />
+                      Choose Image
+                    </div>
+                  </div>
 
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                onChange={handleQRUpload}
-                style={{ display: 'none' }}
-              />
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleQRUpload}
+                    style={{ display: 'none' }}
+                  />
+                </>
+              )}
 
-              {/* Status messages */}
+              {/* Scanning */}
               {qrStatus === 'scanning' && (
-                <div className="flex items-center gap-3 px-4 py-3 rounded-xl"
+                <div className="flex items-center justify-center gap-3 px-4 py-8 rounded-2xl"
                   style={{ backgroundColor: 'var(--bg)' }}>
-                  <div className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin shrink-0" />
-                  <p className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+                  <div className="w-5 h-5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin shrink-0" />
+                  <p className="text-sm font-semibold" style={{ color: 'var(--text-muted)' }}>
                     Reading QR code...
                   </p>
                 </div>
               )}
 
-              {qrStatus === 'success' && (
-                <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl px-4 py-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-emerald-400 rounded-full shrink-0" />
-                      <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-                        QR scanned successfully
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setQrStatus('idle')
-                        setScannedStudentId('')
-                        setStudentId('')
-                        setMode('qr')
-                      }}
-                      className="text-slate-400 hover:text-slate-600"
-                    >
+              {/* Error */}
+              {qrStatus === 'error' && (
+                <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-xs font-semibold text-red-600 dark:text-red-400">{qrMessage}</p>
+                    <button onClick={() => setQrStatus('idle')} className="text-red-400 shrink-0">
                       <X size={14} />
                     </button>
                   </div>
-                  <p className="text-xs text-emerald-600 dark:text-emerald-500 mt-1 font-mono">
-                    Student ID: {scannedStudentId}
-                  </p>
-                  <p className="text-xs text-emerald-600 dark:text-emerald-500 mt-0.5">
-                    Enter your password below to log in
-                  </p>
+                  <div className="space-y-1">
+                    <p className="text-xs text-red-500 font-semibold">Tips:</p>
+                    <p className="text-xs text-red-400">• Use the QR Code Only PNG (not the full ID card)</p>
+                    <p className="text-xs text-red-400">• Make sure the image is not cropped</p>
+                    <p className="text-xs text-red-400">• Or type your Student ID manually in the Student ID tab</p>
+                  </div>
                 </div>
               )}
 
-              {qrStatus === 'error' && (
-                <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3 flex items-start justify-between gap-2">
-                  <p className="text-xs text-red-600 dark:text-red-400">{qrMessage}</p>
-                  <button
-                    onClick={() => setQrStatus('idle')}
-                    className="text-red-400 hover:text-red-600 shrink-0"
-                  >
-                    <X size={14} />
-                  </button>
+              {/* Success — show login form */}
+              {qrStatus === 'success' && (
+                <div className="space-y-4">
+                  <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl px-4 py-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 bg-emerald-400 rounded-full shrink-0" />
+                        <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                          QR scanned successfully
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setQrStatus('idle')
+                          setScannedStudentId('')
+                          setStudentId('')
+                          setPassword('')
+                        }}
+                        className="text-slate-400 hover:text-slate-600"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                    <p className="text-xs text-emerald-600 dark:text-emerald-500 mt-1 font-mono font-bold">
+                      Student ID: {scannedStudentId}
+                    </p>
+                  </div>
+
+                  <form onSubmit={handleLogin} className="space-y-4" autoComplete="on">
+                    <input
+                      type="hidden"
+                      name="username"
+                      value={scannedStudentId}
+                      autoComplete="username"
+                    />
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+                          Password
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setShowForgot(true)}
+                          className="text-xs font-semibold text-slate-400 hover:text-slate-600"
+                        >
+                          Forgot password?
+                        </button>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          required
+                          name="password"
+                          value={password}
+                          onChange={e => setPassword(e.target.value)}
+                          placeholder="Enter your password"
+                          autoComplete="current-password"
+                          autoFocus
+                          className="w-full rounded-xl border px-4 py-2.5 pr-11 text-sm focus:outline-none"
+                          style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        >
+                          {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {error && (
+                      <div className="bg-red-50 dark:bg-red-950/30 border border-red-100 dark:border-red-900 px-3 py-2 rounded-lg">
+                        <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="w-full py-2.5 rounded-xl text-sm font-semibold bg-slate-800 hover:bg-slate-900 text-white transition-all disabled:opacity-50"
+                    >
+                      {loading ? 'Logging in...' : 'Log in'}
+                    </button>
+                  </form>
                 </div>
               )}
 
-              {/* Instructions */}
+              {/* Instructions when idle */}
               {qrStatus === 'idle' && (
                 <div className="space-y-2">
                   {[
                     'Go to Dashboard → My ID Card',
-                    'Download your ID card as PNG',
+                    'Click Download QR Code Only',
                     'Come back here and upload that PNG',
-                    'Your Student ID will be filled automatically',
-                    'Enter your password to log in',
+                    'Your Student ID fills automatically',
+                    'Enter your password and log in',
                   ].map((step, i) => (
                     <div key={i} className="flex items-start gap-2.5">
                       <div className="w-5 h-5 rounded-full bg-slate-800 text-white text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">
@@ -455,101 +491,45 @@ function LoginContent() {
                   ))}
                 </div>
               )}
-
-              {/* Password form — shown after successful QR scan */}
-              {qrStatus === 'success' && (
-                <form onSubmit={handleLogin} className="space-y-4 pt-2">
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="block text-xs font-semibold"
-                        style={{ color: 'var(--text-muted)' }}>
-                        Password
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setShowForgot(true)}
-                        className="text-xs font-semibold text-slate-400 hover:text-slate-600"
-                      >
-                        Forgot password?
-                      </button>
-                    </div>
-                    <div className="relative">
-                      <input
-                      type={showPassword ? 'text' : 'password'}
-                      required
-                      value={password}
-                      onChange={e => setPassword(e.target.value)}
-                      placeholder="Enter your password"
-                      autoFocus
-                      autoComplete="new-password"
-                      className="w-full rounded-xl border px-4 py-2.5 pr-11 text-sm focus:outline-none"
-                      style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-                    />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                      >
-                        {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
-                      </button>
-                    </div>
-                  </div>
-
-                  {error && (
-                    <div className="bg-red-50 dark:bg-red-950/30 border border-red-100 dark:border-red-900 px-3 py-2 rounded-lg">
-                      <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
-                    </div>
-                  )}
-
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full py-2.5 rounded-xl text-sm font-semibold bg-slate-800 hover:bg-slate-900 text-white transition-all disabled:opacity-50"
-                  >
-                    {loading ? 'Logging in...' : 'Log in'}
-                  </button>
-                </form>
-              )}
             </div>
           )}
 
           {/* Student ID form */}
           {mode === 'student_id' && (
-            <form onSubmit={handleLogin} className="space-y-4">
+            <form onSubmit={handleLogin} className="space-y-4" autoComplete="on">
 
-              {/* Show banner if came from QR upload */}
               {scannedStudentId && (
                 <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900 rounded-xl px-4 py-3 flex items-center gap-2">
                   <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse shrink-0" />
                   <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-                    Student ID filled from QR code — enter your password
+                    Student ID filled from QR — enter your password
                   </p>
                 </div>
               )}
 
               <div>
-                <label className="block text-xs font-semibold mb-1.5"
-                  style={{ color: 'var(--text-muted)' }}>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>
                   Student ID Number
                 </label>
                 <input
                   type="text"
                   required
+                  name="username"
                   value={studentId}
                   onChange={e => setStudentId(e.target.value)}
                   placeholder="e.g. 2024-0001"
+                  autoComplete="username"
                   className="w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none font-mono tracking-wider"
                   style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
                 />
                 <p className="text-xs text-slate-400 mt-1">
-                  Or use <span className="font-semibold">Upload QR</span> tab to scan your ID card PNG
+                  Or use <span className="font-semibold">Upload QR</span> tab to scan your ID card
                 </p>
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-semibold"
-                    style={{ color: 'var(--text-muted)' }}>
+                  <label className="block text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
                     Password
                   </label>
                   <button
@@ -564,9 +544,11 @@ function LoginContent() {
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
+                    name="password"
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     placeholder="Enter your password"
+                    autoComplete="current-password"
                     className="w-full rounded-xl border px-4 py-2.5 pr-11 text-sm focus:outline-none"
                     style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
                   />
@@ -598,18 +580,19 @@ function LoginContent() {
 
           {/* Email form */}
           {mode === 'email' && (
-            <form onSubmit={handleLogin} className="space-y-4">
+            <form onSubmit={handleLogin} className="space-y-4" autoComplete="on">
               <div>
-                <label className="block text-xs font-semibold mb-1.5"
-                  style={{ color: 'var(--text-muted)' }}>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>
                   Email address
                 </label>
                 <input
                   type="email"
                   required
+                  name="email"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   placeholder="Enter your email"
+                  autoComplete="email"
                   className="w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none"
                   style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
                 />
@@ -617,8 +600,7 @@ function LoginContent() {
 
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-semibold"
-                    style={{ color: 'var(--text-muted)' }}>
+                  <label className="block text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
                     Password
                   </label>
                   <button
@@ -633,9 +615,11 @@ function LoginContent() {
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
+                    name="password"
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     placeholder="Enter your password"
+                    autoComplete="current-password"
                     className="w-full rounded-xl border px-4 py-2.5 pr-11 text-sm focus:outline-none"
                     style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
                   />
