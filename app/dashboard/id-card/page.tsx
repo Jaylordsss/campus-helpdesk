@@ -154,27 +154,64 @@ export default function IDCardPage() {
     }
   }
 
-  // Simpler QR download - just convert the stored data URL to downloadable
-  const handleDownloadQRSimple = () => {
-    if (!qrDataUrl || !profile) return
-    const link = document.createElement('a')
-    link.download = `${profile?.name?.replace(/\s+/g, '-') || 'student'}-qr-code.png`
-    // Convert transparent QR to white background
-    const canvas = document.createElement('canvas')
-    const img = new Image()
-    img.onload = () => {
-      canvas.width = img.width
-      canvas.height = img.height
+  const handleDownloadQRSimple = async () => {
+    if (!profile?.student_id || !qrDataUrl) return
+    try {
+      const QRCode = await import('qrcode')
+
+      // Parse the original login URL from the stored QR
+      // Re-generate with black on white for download
+      const canvas = document.createElement('canvas')
+      const img = new Image()
+
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve()
+        img.onerror = reject
+        img.src = qrDataUrl
+      })
+
+      canvas.width = 400
+      canvas.height = 400
       const ctx = canvas.getContext('2d')
-      if (ctx) {
-        ctx.fillStyle = '#ffffff'
-        ctx.fillRect(0, 0, canvas.width, canvas.height)
-        ctx.drawImage(img, 0, 0)
-        link.href = canvas.toDataURL('image/png')
-        link.click()
+      if (!ctx) return
+
+      // White background
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, 400, 400)
+
+      // Draw QR on top
+      ctx.drawImage(img, 0, 0, 400, 400)
+
+      // But the QR is white on transparent, so pixels that were white
+      // are now white on white — invisible. We need to invert.
+      // Solution: use jsQR to read the stored QR data, then regenerate black on white
+
+      const jsQR = (await import('jsqr')).default
+      const imageData = ctx.getImageData(0, 0, 400, 400)
+      const code = jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: 'attemptBoth'
+      })
+
+      let downloadUrl = qrDataUrl
+
+      if (code?.data) {
+        // Regenerate with black on white background
+        downloadUrl = await QRCode.toDataURL(code.data, {
+          width: 400,
+          margin: 3,
+          errorCorrectionLevel: 'H',
+          color: { dark: '#000000', light: '#ffffff' }
+        })
       }
+
+      const link = document.createElement('a')
+      link.download = `${profile?.name?.replace(/\s+/g, '-') || 'student'}-qr-code.png`
+      link.href = downloadUrl
+      link.click()
+
+    } catch (err) {
+      console.error('QR download failed:', err)
     }
-    img.src = qrDataUrl
   }
 
   const isISAP = profile?.school === 'ISAP'
