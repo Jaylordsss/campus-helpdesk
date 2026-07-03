@@ -12,6 +12,7 @@ type Profile = {
   student_id: string | null
   course: string | null
   year_level: string | null
+  photo_url: string | null
 }
 
 export default function IDCardPage() {
