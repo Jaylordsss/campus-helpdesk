@@ -1,7 +1,6 @@
-const CACHE_NAME = 'campus-helpdesk-v2'
+const CACHE_NAME = 'campus-helpdesk-v3'
 
 const STATIC_ASSETS = [
-  '/',
   '/visitor',
   '/login',
   '/manifest.json',
@@ -38,12 +37,10 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return
   if (url.origin !== self.location.origin) return
 
-  // Never cache Next.js chunks - always fetch fresh
+  // Never cache Next.js chunks
   if (url.pathname.startsWith('/_next/static/chunks/')) {
     event.respondWith(
-      fetch(request).catch(() => {
-        return caches.match(request)
-      })
+      fetch(request).catch(() => caches.match(request))
     )
     return
   }
@@ -51,17 +48,17 @@ self.addEventListener('fetch', (event) => {
   // Never cache API calls
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(
-      fetch(request).catch(() => {
-        return new Response(
+      fetch(request).catch(() =>
+        new Response(
           JSON.stringify({ error: 'You are offline.' }),
           { headers: { 'Content-Type': 'application/json' } }
         )
-      })
+      )
     )
     return
   }
 
-  // Cache-first for static assets
+  // Cache static Next.js assets
   if (url.pathname.startsWith('/_next/static/')) {
     event.respondWith(
       caches.match(request).then((cached) => {
@@ -75,11 +72,11 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // Network-first for pages
+  // Network first for all pages
   event.respondWith(
     fetch(request)
       .then((response) => {
-        if (response.ok) {
+        if (response.ok && response.type !== 'opaque') {
           const clone = response.clone()
           caches.open(CACHE_NAME).then((cache) => cache.put(request, clone))
         }
