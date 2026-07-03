@@ -48,15 +48,45 @@ function LoginContent() {
     setScannedStudentId('')
 
     try {
-      const { Html5Qrcode } = await import('html5-qrcode')
-      const html5QrCode = new Html5Qrcode('qr-upload-reader')
+      // Use jsqr which works reliably on both localhost and Vercel
+      const jsQR = (await import('jsqr')).default
 
-      const result = await html5QrCode.scanFile(file, true)
-      await html5QrCode.clear()
+      // Read file as image
+      const imageData = await new Promise<ImageData>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = (ev) => {
+          const img = new Image()
+          img.onload = () => {
+            const canvas = document.createElement('canvas')
+            canvas.width = img.width
+            canvas.height = img.height
+            const ctx = canvas.getContext('2d')
+            if (!ctx) { reject(new Error('No canvas context')); return }
+            ctx.drawImage(img, 0, 0)
+            resolve(ctx.getImageData(0, 0, img.width, img.height))
+          }
+          img.onerror = reject
+          img.src = ev.target?.result as string
+        }
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      })
+
+      // Scan QR code from image data
+      const code = jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: 'attemptBoth',
+      })
+
+      if (!code) {
+        setQrStatus('error')
+        setQrMessage('Could not read QR code. Try downloading the QR Code Only PNG for better results.')
+        if (fileRef.current) fileRef.current.value = ''
+        return
+      }
 
       // Parse student_id from URL
       try {
-        const url = new URL(result)
+        const url = new URL(code.data)
         const sid = url.searchParams.get('student_id')
         if (sid) {
           const decoded = decodeURIComponent(sid)
@@ -64,7 +94,6 @@ function LoginContent() {
           setStudentId(decoded)
           setQrStatus('success')
           setQrMessage(`Student ID found: ${decoded}`)
-          // Switch to student_id mode with pre-filled ID
           setMode('student_id')
         } else {
           setQrStatus('error')
@@ -72,15 +101,15 @@ function LoginContent() {
         }
       } catch {
         setQrStatus('error')
-        setQrMessage('Invalid QR code format. Please use your campus ID card.')
+        setQrMessage('Invalid QR code format. Please use your campus ID card QR.')
       }
+
     } catch (err) {
       console.error('QR scan error:', err)
       setQrStatus('error')
-      setQrMessage('Could not read QR code. Make sure the image is clear.')
+      setQrMessage('Could not read QR code. Please try the QR Code Only download for best results.')
     }
 
-    // Reset file input
     if (fileRef.current) fileRef.current.value = ''
   }
 
@@ -317,8 +346,7 @@ function LoginContent() {
             </button>
           </div>
 
-          {/* Hidden QR reader div needed by html5-qrcode */}
-          <div id="qr-upload-reader" style={{ display: 'none' }} />
+          
 
           {/* QR Upload mode */}
           {mode === 'qr' && (
