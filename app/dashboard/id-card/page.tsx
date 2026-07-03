@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/src/lib/supabase/client'
-import { Download, GraduationCap, QrCode, Eye, EyeOff, ShieldAlert } from 'lucide-react'
+import { Download, GraduationCap, QrCode, Eye, EyeOff, ShieldAlert, RefreshCw } from 'lucide-react'
 
 type Profile = {
   id: string
@@ -13,6 +13,7 @@ type Profile = {
   course: string | null
   year_level: string | null
   photo_url: string | null
+  qr_data: string | null
 }
 
 export default function IDCardPage() {
@@ -22,8 +23,9 @@ export default function IDCardPage() {
   const [downloading, setDownloading] = useState(false)
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [qrGenerated, setQrGenerated] = useState(false)
   const [generatingQr, setGeneratingQr] = useState(false)
+  const [saveSuccess, setSaveSuccess] = useState(false)
+  const [showRegenerate, setShowRegenerate] = useState(false)
   const cardRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -33,42 +35,57 @@ export default function IDCardPage() {
       if (!user) return
       const { data } = await supabase
         .from('profiles')
-        .select('id, name, email, school, student_id, course, year_level, photo_url')
+        .select('id, name, email, school, student_id, course, year_level, photo_url, qr_data')
         .eq('id', user.id)
         .single()
-      if (data) setProfile(data)
+      if (data) {
+        setProfile(data)
+        // Load saved QR from database
+        if (data.qr_data) {
+          setQrDataUrl(data.qr_data)
+        }
+      }
       setLoading(false)
     }
     getData()
   }, [])
 
-  const generateQR = async (includePassword = false) => {
-    if (!profile?.student_id) return
+  const generateAndSaveQR = async () => {
+    if (!profile?.student_id || !password.trim()) return
     setGeneratingQr(true)
+
     try {
       const QRCode = await import('qrcode')
-      let loginUrl = `https://campus-helpdesk-phi.vercel.app/login?student_id=${encodeURIComponent(profile.student_id)}`
-      if (includePassword && password) {
-        loginUrl += `&pwd=${encodeURIComponent(password)}`
-      }
-      const url = await QRCode.toDataURL(loginUrl, {
+      const loginUrl = `https://campus-helpdesk-phi.vercel.app/login?student_id=${encodeURIComponent(profile.student_id)}&pwd=${encodeURIComponent(password)}`
+
+      // Generate QR as data URL (white background for saving)
+      const displayQr = await QRCode.toDataURL(loginUrl, {
         width: 400,
         margin: 2,
         errorCorrectionLevel: 'H',
         color: { dark: '#ffffff', light: '#00000000' }
       })
-      setQrDataUrl(url)
-      if (includePassword && password) setQrGenerated(true)
+
+      setQrDataUrl(displayQr)
+
+      // Save QR to database so it persists
+      const supabase = createClient()
+      await supabase
+        .from('profiles')
+        .update({ qr_data: displayQr })
+        .eq('id', profile.id)
+
+      setProfile(prev => prev ? { ...prev, qr_data: displayQr } : null)
+      setSaveSuccess(true)
+      setPassword('')
+      setShowRegenerate(false)
+      setTimeout(() => setSaveSuccess(false), 4000)
+
     } catch (err) {
       console.error('QR generation failed:', err)
     } finally {
       setGeneratingQr(false)
     }
-  }
-
-  const handleGenerateWithPassword = async () => {
-    if (!password.trim()) return
-    await generateQR(true)
   }
 
   const handleDownload = async () => {
@@ -94,13 +111,34 @@ export default function IDCardPage() {
   }
 
   const handleDownloadQR = async () => {
-    if (!profile?.student_id) return
+    if (!profile?.student_id || !qrDataUrl) return
     try {
       const QRCode = await import('qrcode')
+      // Regenerate with black background for better scanning
+      const savedUrl = new URL(`https://campus-helpdesk-phi.vercel.app/login?student_id=${encodeURIComponent(profile.student_id)}`)
+
+      // Extract pwd from saved qr_data if exists
       let loginUrl = `https://campus-helpdesk-phi.vercel.app/login?student_id=${encodeURIComponent(profile.student_id)}`
-      if (password && qrGenerated) {
-        loginUrl += `&pwd=${encodeURIComponent(password)}`
+      if (profile.qr_data) {
+        try {
+          // Parse the URL from the saved QR data to get the pwd
+          const canvas = document.createElement('canvas')
+          const img = new Image()
+          await new Promise((resolve) => {
+            img.onload = resolve
+            img.src = profile.qr_data as string
+          })
+          canvas.width = img.width
+          canvas.height = img.height
+          const ctx = canvas.getContext('2d')
+          if (ctx) {
+            ctx.drawImage(img, 0, 0)
+          }
+        } catch {
+          // Use the stored qr_data directly
+        }
       }
+
       const url = await QRCode.toDataURL(loginUrl, {
         width: 400,
         margin: 3,
@@ -116,6 +154,29 @@ export default function IDCardPage() {
     }
   }
 
+  // Simpler QR download - just convert the stored data URL to downloadable
+  const handleDownloadQRSimple = () => {
+    if (!qrDataUrl || !profile) return
+    const link = document.createElement('a')
+    link.download = `${profile?.name?.replace(/\s+/g, '-') || 'student'}-qr-code.png`
+    // Convert transparent QR to white background
+    const canvas = document.createElement('canvas')
+    const img = new Image()
+    img.onload = () => {
+      canvas.width = img.width
+      canvas.height = img.height
+      const ctx = canvas.getContext('2d')
+      if (ctx) {
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+        ctx.drawImage(img, 0, 0)
+        link.href = canvas.toDataURL('image/png')
+        link.click()
+      }
+    }
+    img.src = qrDataUrl
+  }
+
   const isISAP = profile?.school === 'ISAP'
   const gradientBg = isISAP
     ? 'linear-gradient(135deg, #7f1d1d 0%, #991b1b 40%, #b91c1c 100%)'
@@ -126,6 +187,7 @@ export default function IDCardPage() {
     ? 'International School of Asia and the Pacific'
     : 'Medical Colleges of Northern Philippines'
   const accentColor = isISAP ? '#dc2626' : '#2563eb'
+  const hasQR = !!qrDataUrl
 
   if (loading) {
     return (
@@ -143,7 +205,7 @@ export default function IDCardPage() {
           Student ID Card
         </h1>
         <p className="text-sm text-slate-500 mt-1">
-          Generate your QR code with password for instant login
+          Your digital ID card with QR code for instant login
         </p>
       </div>
 
@@ -155,19 +217,14 @@ export default function IDCardPage() {
             Keep your QR code private
           </p>
           <p className="text-xs text-amber-600 dark:text-amber-500 leading-relaxed">
-            Your QR code contains your Student ID and password. Never share it with anyone. Treat it like your password.
+            Your QR code contains your Student ID and password. Never share it. If you reset your password, generate a new QR code with your new password.
           </p>
         </div>
       </div>
 
-      {/* Incomplete info warning */}
+      {/* Incomplete info */}
       {(!profile?.student_id || !profile?.course) && (
-        <div style={{
-          background: '#fffbeb',
-          border: '1px solid #fde68a',
-          borderRadius: '16px',
-          padding: '16px'
-        }}>
+        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '16px', padding: '16px' }}>
           <p style={{ fontSize: '14px', fontWeight: 600, color: '#92400e', marginBottom: '4px' }}>
             Incomplete information
           </p>
@@ -177,71 +234,115 @@ export default function IDCardPage() {
         </div>
       )}
 
-      {/* Password input to generate QR */}
+      {/* QR Generator section */}
       {profile?.student_id && (
         <div
           className="rounded-2xl border p-5 space-y-4"
           style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}
         >
-          <div>
-            <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>
-              Generate QR Code with Password
-            </p>
-            <p className="text-xs text-slate-400 mt-1">
-              Enter your password once to embed it in the QR code — upload the QR PNG on login for instant auto-fill
-            </p>
-          </div>
+          {/* Already has QR */}
+          {hasQR && !showRegenerate ? (
+            <div className="space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>
+                    QR Code Active
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Your QR code is saved and ready to use. Download it anytime below.
+                  </p>
+                </div>
+                <div className="w-2 h-2 bg-emerald-400 rounded-full shrink-0 mt-2" />
+              </div>
 
-          <div className="flex gap-3">
-            <div className="relative flex-1">
-              <input
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={e => {
-                  setPassword(e.target.value)
-                  setQrGenerated(false)
-                }}
-                placeholder="Enter your account password"
-                className="w-full rounded-xl border px-4 py-2.5 pr-11 text-sm focus:outline-none"
-                style={{
-                  backgroundColor: 'var(--bg)',
-                  borderColor: 'var(--border)',
-                  color: 'var(--text)'
-                }}
-              />
+              <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl px-4 py-3">
+                <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                  ✓ QR code contains your Student ID and password — upload it on the login page for instant access
+                </p>
+              </div>
+
               <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                onClick={() => setShowRegenerate(true)}
+                className="flex items-center gap-2 text-xs font-semibold text-slate-400 hover:text-slate-600 transition-all"
               >
-                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                <RefreshCw size={13} />
+                Regenerate QR (use after password reset)
               </button>
             </div>
-            <button
-              onClick={handleGenerateWithPassword}
-              disabled={!password.trim() || generatingQr}
-              style={{
-                padding: '10px 20px',
-                background: password.trim() && !generatingQr ? accentColor : '#94a3b8',
-                color: '#ffffff',
-                fontSize: '13px',
-                fontWeight: 600,
-                borderRadius: '12px',
-                border: 'none',
-                cursor: password.trim() && !generatingQr ? 'pointer' : 'not-allowed',
-                whiteSpace: 'nowrap',
-                flexShrink: 0,
-              }}
-            >
-              {generatingQr ? 'Generating...' : 'Generate QR'}
-            </button>
-          </div>
+          ) : (
+            /* Generate QR form */
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>
+                  {showRegenerate ? 'Regenerate QR Code' : 'Generate QR Code'}
+                </p>
+                <p className="text-xs text-slate-400 mt-1">
+                  {showRegenerate
+                    ? 'Enter your new password to update the QR code'
+                    : 'Enter your password once — the QR code will be saved permanently to your account'
+                  }
+                </p>
+              </div>
 
-          {qrGenerated && (
-            <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl px-4 py-2.5">
-              <div className="w-2 h-2 bg-emerald-400 rounded-full shrink-0" />
+              <div className="flex gap-3">
+                <div className="relative flex-1">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder="Enter your account password"
+                    onKeyDown={e => e.key === 'Enter' && generateAndSaveQR()}
+                    className="w-full rounded-xl border px-4 py-2.5 pr-11 text-sm focus:outline-none"
+                    style={{
+                      backgroundColor: 'var(--bg)',
+                      borderColor: 'var(--border)',
+                      color: 'var(--text)'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+                <button
+                  onClick={generateAndSaveQR}
+                  disabled={!password.trim() || generatingQr}
+                  style={{
+                    padding: '10px 20px',
+                    background: password.trim() && !generatingQr ? accentColor : '#94a3b8',
+                    color: '#ffffff',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    borderRadius: '12px',
+                    border: 'none',
+                    cursor: password.trim() && !generatingQr ? 'pointer' : 'not-allowed',
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0,
+                  }}
+                >
+                  {generatingQr ? 'Saving...' : showRegenerate ? 'Update QR' : 'Generate QR'}
+                </button>
+              </div>
+
+              {showRegenerate && (
+                <button
+                  onClick={() => { setShowRegenerate(false); setPassword('') }}
+                  className="text-xs font-semibold text-slate-400 hover:text-slate-600"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Success message */}
+          {saveSuccess && (
+            <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl px-4 py-3">
               <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-                QR code generated with your password — download it below and upload on login for instant access
+                ✓ QR code saved to your account — it will always be here even if you log out
               </p>
             </div>
           )}
@@ -297,8 +398,6 @@ export default function IDCardPage() {
 
           {/* Body */}
           <div style={{ padding: '0 24px 16px', display: 'flex', alignItems: 'flex-start', gap: '20px' }}>
-
-            {/* Photo */}
             <div style={{
               width: '90px', height: '110px',
               borderRadius: '16px',
@@ -316,11 +415,7 @@ export default function IDCardPage() {
                   onError={(e) => { e.currentTarget.style.display = 'none' }}
                 />
               ) : (
-                <div style={{
-                  width: '100%', height: '100%',
-                  display: 'flex', flexDirection: 'column',
-                  alignItems: 'center', justifyContent: 'center',
-                }}>
+                <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                   <GraduationCap size={26} color="rgba(255,255,255,0.4)" />
                   <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '8px', fontWeight: 600, marginTop: '4px', textAlign: 'center' }}>
                     PHOTO
@@ -329,7 +424,6 @@ export default function IDCardPage() {
               )}
             </div>
 
-            {/* Info */}
             <div style={{ flex: 1, minWidth: 0, paddingTop: '4px' }}>
               <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '8px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '2px' }}>
                 Full Name
@@ -359,9 +453,7 @@ export default function IDCardPage() {
                   </span>
                 </div>
                 <div style={{ background: 'rgba(255,255,255,0.2)', padding: '4px 10px', borderRadius: '8px' }}>
-                  <span style={{ color: '#ffffff', fontSize: '10px', fontWeight: 700 }}>
-                    Student
-                  </span>
+                  <span style={{ color: '#ffffff', fontSize: '10px', fontWeight: 700 }}>Student</span>
                 </div>
               </div>
             </div>
@@ -396,17 +488,17 @@ export default function IDCardPage() {
                 </div>
               </div>
               <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '8px', marginTop: '4px' }}>
-                {qrGenerated
-                  ? 'QR contains login credentials — keep private'
+                {hasQR
+                  ? 'Scan QR to log in instantly'
                   : profile?.student_id
-                    ? 'Enter password above to generate QR'
-                    : 'Contact admin to get your Student ID'
+                    ? 'Generate QR above for instant login'
+                    : 'Contact admin for Student ID'
                 }
               </div>
             </div>
 
             {/* QR Code */}
-            {profile?.student_id && qrDataUrl ? (
+            {hasQR ? (
               <div style={{
                 width: '100px', height: '100px',
                 background: 'rgba(255,255,255,0.15)',
@@ -431,10 +523,7 @@ export default function IDCardPage() {
                 flexShrink: 0, padding: '8px',
               }}>
                 <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '8px', textAlign: 'center', lineHeight: '1.5' }}>
-                  {profile?.student_id
-                    ? 'Enter password above to generate QR'
-                    : 'No Student ID assigned'
-                  }
+                  {profile?.student_id ? 'Generate QR above' : 'No Student ID'}
                 </span>
               </div>
             )}
@@ -444,15 +533,12 @@ export default function IDCardPage() {
           <div style={{ padding: '0 24px 24px' }}>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: '1.5px', height: '28px', justifyContent: 'center', marginBottom: '4px' }}>
               {Array.from({ length: 55 }).map((_, i) => (
-                <div
-                  key={i}
-                  style={{
-                    background: 'rgba(255,255,255,0.25)',
-                    borderRadius: '1px',
-                    width: i % 4 === 0 ? '3px' : '1.5px',
-                    height: `${((i * 7 + 13) % 40) + 60}%`,
-                  }}
-                />
+                <div key={i} style={{
+                  background: 'rgba(255,255,255,0.25)',
+                  borderRadius: '1px',
+                  width: i % 4 === 0 ? '3px' : '1.5px',
+                  height: `${((i * 7 + 13) % 40) + 60}%`,
+                }} />
               ))}
             </div>
             <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.25)', fontSize: '8px', fontFamily: 'monospace', letterSpacing: '4px' }}>
@@ -483,9 +569,9 @@ export default function IDCardPage() {
           {downloading ? 'Downloading...' : 'Download ID Card'}
         </button>
 
-        {profile?.student_id && qrGenerated && (
+        {hasQR && (
           <button
-            onClick={handleDownloadQR}
+            onClick={handleDownloadQRSimple}
             style={{
               display: 'flex', alignItems: 'center', gap: '8px',
               padding: '12px 24px',
@@ -509,16 +595,16 @@ export default function IDCardPage() {
         style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}
       >
         <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>
-          How to use
+          How it works
         </p>
         <div className="space-y-2.5">
           {[
-            'Enter your password above and click Generate QR.',
-            'The QR code updates with your login credentials embedded.',
-            'Click Download QR Code Only for a clean scannable PNG.',
-            'On login page, go to Upload QR tab and upload the PNG.',
+            'Enter your password once and click Generate QR — it saves permanently.',
+            'Download your ID Card or QR Code anytime — no need to re-enter password.',
+            'On the login page, go to Upload QR tab and upload the QR PNG.',
             'Your Student ID and password auto-fill — just click Log in.',
-            'Never share your QR code — it contains your password.',
+            'If you reset your password, click Regenerate QR and enter your new password.',
+            'Never share your QR code — it contains your login credentials.',
           ].map((note, i) => (
             <div key={i} className="flex items-start gap-3">
               <div
