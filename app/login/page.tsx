@@ -33,9 +33,13 @@ function LoginContent() {
   useEffect(() => {
     if (!searchParams) return
     const sid = searchParams.get('student_id')
+    const pwd = searchParams.get('pwd')
     if (sid) {
       setStudentId(decodeURIComponent(sid))
       setMode('student_id')
+    }
+    if (pwd) {
+      setPassword(decodeURIComponent(pwd))
     }
   }, [searchParams])
 
@@ -86,14 +90,16 @@ function LoginContent() {
       try {
         const url = new URL(code.data)
         const sid = url.searchParams.get('student_id')
+        const pwd = url.searchParams.get('pwd')
         if (sid) {
           const decoded = decodeURIComponent(sid)
           setScannedStudentId(decoded)
           setStudentId(decoded)
+          if (pwd) setPassword(decodeURIComponent(pwd))
           setQrStatus('success')
-          setQrMessage(`Student ID: ${decoded}`)
+          setQrMessage(pwd ? `Student ID and password filled — click Log in` : `Student ID: ${decoded}`)
           setMode('student_id')
-        } else {
+        }else {
           setQrStatus('error')
           setQrMessage('QR code is not a valid campus ID card.')
         }
