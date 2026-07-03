@@ -124,8 +124,8 @@ export default function VisitorPage() {
     {
       id: 'welcome',
       role: 'ai',
-      content: 'Hello! Welcome to the Smart Campus Help Desk for ISAP and MCNP.\n\nI can help you with:\n- Course and program information\n- Tuition fees per year level\n- Enrollment requirements\n- Office locations\n- Scholarships and grants\n- General campus questions\n\nWhat would you like to know?',
-      timestamp: new Date()
+      content: 'Hello! Welcome to the Smart Campus Help Desk for ISAP and MCNP.\n\nI can help you with:\n- Course and program information\n- Tuition fees\n- Enrollment requirements\n- Office locations\n- Scholarships and grants\n- General campus questions\n\nWhat would you like to know?',
+      timestamp: new Date(0)
     }
   ])
   const [input, setInput] = useState('')
@@ -260,9 +260,15 @@ export default function VisitorPage() {
     if (hrs < 24) return `${hrs}h ago`
     return `${Math.floor(hrs / 24)}d ago`
   }
+  const [mounted, setMounted] = useState(false)
 
-  const formatTime = (date: Date) =>
-    date.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+  const formatTime = (date: Date) => {
+    if (typeof window === 'undefined') return ''
+    return date.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -382,11 +388,13 @@ export default function VisitorPage() {
                     ? renderMessage(msg.content)
                     : <p className="text-sm text-white leading-relaxed">{msg.content}</p>
                   }
-                  <p className={`text-[10px] mt-2 ${
-                    msg.role === 'ai' ? 'text-slate-300' : 'text-slate-400'
-                  }`}>
-                    {formatTime(msg.timestamp)}
-                  </p>
+                  {mounted && (
+                    <p className={`text-[10px] mt-2 ${
+                      msg.role === 'ai' ? 'text-slate-300' : 'text-slate-400'
+                    }`}>
+                      {formatTime(msg.timestamp)}
+                    </p>
+                  )}
                 </div>
               </div>
             ))}
@@ -735,4 +743,49 @@ export default function VisitorPage() {
       </div>
     </div>
   )
+  {/* PWA Install banner */}
+  <InstallBanner />
+  function InstallBanner() {
+  const [installPrompt, setInstallPrompt] = useState<Event | null>(null)
+  const [installed, setInstalled] = useState(false)
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      e.preventDefault()
+      setInstallPrompt(e)
+    }
+    window.addEventListener('beforeinstallprompt', handler)
+    window.addEventListener('appinstalled', () => setInstalled(true))
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
+
+  if (!installPrompt || installed) return null
+
+  return (
+    <div className="bg-slate-800 rounded-2xl p-5 flex items-center justify-between gap-4">
+      <div className="flex items-center gap-3">
+        <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center shrink-0">
+          <span className="text-2xl">📱</span>
+        </div>
+        <div>
+          <p className="text-sm font-bold text-white">Install App</p>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Add to your home screen for quick access — works offline too
+          </p>
+        </div>
+      </div>
+      <button
+        onClick={async () => {
+          if (!installPrompt) return
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (installPrompt as any).prompt()
+          setInstallPrompt(null)
+        }}
+        className="px-4 py-2 bg-white text-slate-900 text-xs font-bold rounded-xl shrink-0 hover:bg-slate-100 transition-all"
+      >
+        Install
+      </button>
+    </div>
+  )
+}
 }

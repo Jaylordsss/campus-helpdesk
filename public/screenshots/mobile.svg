@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="390" height="844">
+  <rect width="390" height="844" fill="#f8fafc"/>
+  <rect width="390" height="60" fill="#1e293b"/>
+  <text x="195" y="38" font-family="Arial" font-size="18" font-weight="bold" 
+        text-anchor="middle" fill="white">Smart Campus Help Desk</text>
+  <rect x="20" y="80" width="350" height="200" rx="16" fill="white" stroke="#e2e8f0"/>
+  <text x="195" y="190" font-family="Arial" font-size="24" font-weight="bold" 
+        text-anchor="middle" fill="#1e293b">How can we help you?</text>
+  <rect x="20" y="300" width="350" height="120" rx="16" fill="white" stroke="#e2e8f0"/>
+  <text x="195" y="365" font-family="Arial" font-size="16" 
+        text-anchor="middle" fill="#64748b">AI Assistant</text>
+</svg>

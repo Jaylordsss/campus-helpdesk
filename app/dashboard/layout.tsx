@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import NotificationBell from '@/components/NotificationBell'
 import ThemeToggle from '@/components/ThemeToggle'
+import OfflineBanner from '@/components/OfflineBanner'
 
 const navItems = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -191,7 +192,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <ThemeToggle />
           <NotificationBell />
         </header>
-
+        <OfflineBanner />
         <main className="flex-1 overflow-y-auto">
           <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
             {children}
