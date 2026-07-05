@@ -93,33 +93,33 @@ self.addEventListener('fetch', (event) => {
       })
   )
 })
-// ── Push notification handler ──────────────────────────────────────────────
 self.addEventListener('push', (event) => {
   if (!event.data) return
-  const data = event.data.json()
+  let data
+  try {
+    data = event.data.json()
+  } catch {
+    data = { title: 'New Notification', body: event.data.text() }
+  }
   event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      icon: data.icon || '/icons/icon-192x192.png',
-      badge: data.badge || '/icons/icon-192x192.png',
+    self.registration.showNotification(data.title || 'Campus Help Desk', {
+      body: data.body || data.message || '',
+      icon: '/icons/icon-192x192.png',
+      badge: '/icons/icon-192x192.png',
       vibrate: [200, 100, 200],
-      data: data.data || {},
-      actions: [
-        { action: 'open', title: 'Open' },
-        { action: 'close', title: 'Dismiss' }
-      ]
+      data: data.data || { link: '/dashboard' },
+      requireInteraction: true,
     })
   )
 })
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
-  if (event.action === 'close') return
   const link = event.notification.data?.link || '/dashboard'
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
-        if (client.url.includes(self.location.origin) && 'focus' in client) {
+        if ('focus' in client) {
           client.navigate(link)
           return client.focus()
         }
