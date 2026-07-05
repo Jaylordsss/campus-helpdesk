@@ -140,6 +140,7 @@ export default function AdminAnnouncementsPage() {
       type: a.type,
       school: a.school,
       expires_at: a.expires_at ? a.expires_at.substring(0, 10) : '',
+      course_target: (a as unknown as { course_target?: string }).course_target || 'ALL',
     })
     setEditId(a.id)
     setShowForm(true)
