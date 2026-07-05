@@ -7,7 +7,7 @@ import {
   LayoutDashboard, BookOpen, CreditCard,
   Map, MessageSquare, Star, LogOut,
   Menu, GraduationCap, Bot, ChevronRight,
-  HelpCircle, Megaphone, IdCard, User, Bell
+  HelpCircle, Megaphone, IdCard, User, Bell, Settings
 } from 'lucide-react'
 import PushNotificationSetup from '@/components/PushNotificationSetup'
 import NotificationBell from '@/components/NotificationBell'
@@ -28,6 +28,7 @@ const navItems = [
   { label: 'Notifications', href: '/dashboard/notifications', icon: Bell },
   { label: 'My Profile', href: '/dashboard/profile', icon: User },
   { label: 'My ID Card', href: '/dashboard/id-card', icon: IdCard },
+  { label: 'Settings', href: '/dashboard/settings', icon: Settings },
 ]
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
