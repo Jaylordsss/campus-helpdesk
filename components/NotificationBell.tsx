@@ -117,10 +117,9 @@ export default function NotificationBell() {
           <div
             className="absolute z-50 rounded-2xl shadow-xl overflow-hidden"
             style={{
-              width: '300px',
-              // Open upward if bell is at bottom (sidebar), downward if at top (header)
+              width: '320px',
               ...(openUpward
-                ? { bottom: '48px', right: '0px' }
+                ? { bottom: '48px', left: '-140px' }
                 : { top: '48px', right: '0px' }
               ),
               backgroundColor: 'var(--bg-card)',
