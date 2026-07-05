@@ -93,38 +93,49 @@ self.addEventListener('fetch', (event) => {
       })
   )
 })
-self.addEventListener('push', (event) => {
-  if (!event.data) return
-  let data
+
+// Push notification handler
+self.addEventListener('push', function(event) {
+  console.log('[SW] Push received:', event)
+
+  let data = {}
   try {
-    data = event.data.json()
-  } catch {
-    data = { title: 'New Notification', body: event.data.text() }
+    data = event.data ? event.data.json() : {}
+  } catch(e) {
+    data = { title: 'New Notification', body: event.data ? event.data.text() : '' }
   }
+
+  const title = data.title || 'Smart Campus Help Desk'
+  const options = {
+    body: data.body || '',
+    icon: '/icons/icon-192x192.png',
+    badge: '/icons/icon-192x192.png',
+    data: data.data || { link: '/dashboard' },
+    vibrate: [100, 50, 100],
+    tag: 'campus-notification',
+  }
+
   event.waitUntil(
-    self.registration.showNotification(data.title || 'Campus Help Desk', {
-      body: data.body || data.message || '',
-      icon: '/icons/icon-192x192.png',
-      badge: '/icons/icon-192x192.png',
-      vibrate: [200, 100, 200],
-      data: data.data || { link: '/dashboard' },
-      requireInteraction: true,
-    })
+    self.registration.showNotification(title, options)
   )
 })
 
-self.addEventListener('notificationclick', (event) => {
+self.addEventListener('notificationclick', function(event) {
+  console.log('[SW] Notification clicked')
   event.notification.close()
-  const link = event.notification.data?.link || '/dashboard'
+
+  const link = (event.notification.data && event.notification.data.link) ? event.notification.data.link : '/dashboard'
+
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
+      for (var i = 0; i < clientList.length; i++) {
+        var client = clientList[i]
         if ('focus' in client) {
           client.navigate(link)
           return client.focus()
         }
       }
-      return clients.openWindow(link)
+      if (clients.openWindow) return clients.openWindow(link)
     })
   )
 })
