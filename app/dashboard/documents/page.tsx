@@ -304,25 +304,25 @@ export default function DocumentsPage() {
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
+      <div>
+        <div className="flex items-start justify-between gap-3">
           <h1 className="text-2xl font-bold" style={{ color: 'var(--text)' }}>
             Document Requests
           </h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-            Request official school documents online
-          </p>
+          {!showForm && (
+            <button
+              onClick={() => { setShowForm(true); setFormStep('type') }}
+              className="flex items-center gap-2 px-4 py-2.5 text-white text-sm font-semibold rounded-xl transition-all shrink-0"
+              style={{ backgroundColor: accentColor }}
+            >
+              <Plus size={16} />
+              New Request
+            </button>
+          )}
         </div>
-        {!showForm && (
-          <button
-            onClick={() => { setShowForm(true); setFormStep('type') }}
-            className="flex items-center gap-2 px-4 py-2.5 text-white text-sm font-semibold rounded-xl transition-all"
-            style={{ backgroundColor: accentColor }}
-          >
-            <Plus size={16} />
-            New Request
-          </button>
-        )}
+        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+          Request official school documents online
+        </p>
       </div>
 
       {/* Request Form */}
