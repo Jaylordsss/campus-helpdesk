@@ -11,7 +11,7 @@ import {
 } from 'lucide-react'
 import NotificationBell from '@/components/NotificationBell'
 import ThemeToggle from '@/components/ThemeToggle'
-import PushNotificationSetup from '@/components/PushNotificationSetup'
+
 
 const navItems = [
   { label: 'Dashboard', href: '/admin', icon: LayoutDashboard },
@@ -170,7 +170,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <span className="text-sm font-semibold flex-1" style={{ color: 'var(--text)' }}>
             Admin Portal
           </span>
-          <PushNotificationSetup />
+          
           <ThemeToggle />
           <NotificationBell />
         </header>
