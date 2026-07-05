@@ -213,15 +213,22 @@ export default function NotificationBell() {
                 className="px-4 py-2.5 flex items-center justify-between"
                 style={{ borderTop: '1px solid var(--border)' }}
               >
-                <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
-                  {notifications.length} total
-                </p>
+                <button
+                  onClick={() => {
+                    setOpen(false)
+                    window.location.href = '/dashboard/notifications'
+                  }}
+                  className="text-xs font-bold hover:opacity-70 transition-opacity"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  View all inbox →
+                </button>
                 <button
                   onClick={markAllRead}
                   className="text-xs font-semibold hover:opacity-70 transition-opacity"
-                  style={{ color: 'var(--text-muted)' }}
+                  style={{ color: 'var(--text-faint)' }}
                 >
-                  Mark all as read
+                  Mark all read
                 </button>
               </div>
             )}
