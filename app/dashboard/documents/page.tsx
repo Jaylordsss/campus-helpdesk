@@ -611,13 +611,24 @@ export default function DocumentsPage() {
                     </div>
                   </div>
 
-                  {/* Alert for payment required */}
-                  {req.status === 'Payment Required' && (
-                    <div className="flex items-center gap-2 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5 mb-3">
-                      <AlertCircle size={14} className="text-red-600 shrink-0" />
-                      <p className="text-xs font-semibold text-red-700">
-                        Payment required — please visit the Finance/Cashier office to pay.
-                      </p>
+                  {/* Waiting for pickup date */}
+                  {req.status === 'Payment Confirmed' && (
+                    <div className="flex items-center gap-2 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2.5 mb-3">
+                      <Clock size={14} className="text-blue-600 shrink-0" />
+                      <div>
+                        <p className="text-xs font-semibold text-blue-700">
+                          Payment confirmed! Your document is being prepared.
+                        </p>
+                        {req.pickup_date && (
+                          <p className="text-xs text-blue-600 mt-0.5">
+                            Ready for pickup on: <span className="font-bold">
+                              {new Date(req.pickup_date).toLocaleDateString('en-PH', {
+                                weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+                              })}
+                            </span>
+                          </p>
+                        )}
+                      </div>
                     </div>
                   )}
 

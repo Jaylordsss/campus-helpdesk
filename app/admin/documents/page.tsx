@@ -182,23 +182,29 @@ export default function AdminDocumentsPage() {
   const getNextActions = (req: DocumentRequest) => {
     const doc = DOCUMENT_TYPES.find(d => d.value === req.document_type)
     if (!doc) return []
+    if (req.status === 'Claimed' || req.status === 'Rejected') return []
 
     const currentIdx = doc.steps.indexOf(req.current_step)
     const actions = []
 
-    if (req.status === 'Claimed' || req.status === 'Rejected') return []
-
-    // Payment flow
     if (req.status === 'Payment Required') {
       actions.push({
-        label: 'Mark Payment Confirmed',
+        label: '✅ Confirm Payment Received',
         status: 'Payment Confirmed',
-        nextStep: currentIdx + 1 < doc.steps.length ? doc.steps[currentIdx + 1] : 'Registrar',
+        nextStep: req.current_step,
+        color: '#10b981',
+        needsPickupDate: true,
+      })
+    } else if (req.status === 'Payment Confirmed') {
+      // Waiting for cron to auto-mark ready — admin can manually mark ready too
+      actions.push({
+        label: '📦 Mark Ready Now (Manual)',
+        status: 'Ready for Pickup',
         color: '#10b981',
       })
     } else if (req.status === 'Ready for Pickup') {
       actions.push({
-        label: 'Mark as Claimed ✓',
+        label: '✅ Mark as Claimed',
         status: 'Claimed',
         color: '#64748b',
       })
@@ -210,11 +216,9 @@ export default function AdminDocumentsPage() {
         needsPickupDate: true,
       })
     } else {
-      // Approve current step — move to next
       const nextStep = doc.steps[currentIdx + 1]
 
       if (currentIdx === doc.steps.length - 1) {
-        // Last step — mark being prepared
         actions.push({
           label: '✅ Approve — Mark Being Prepared',
           status: 'Being Prepared',
@@ -237,10 +241,9 @@ export default function AdminDocumentsPage() {
       }
     }
 
-    // Reject is always available
     if (req.status !== 'Claimed') {
       actions.push({
-        label: '❌ Reject Request',
+        label: '❌ Reject',
         status: 'Rejected',
         color: '#ef4444',
         isReject: true,
@@ -426,19 +429,23 @@ export default function AdminDocumentsPage() {
                         />
                       </div>
 
-                      {/* Pickup date — only for ready for pickup */}
-                      {(req.status === 'Being Prepared' || needsPickupDate) && (
+                      {/* Pickup date */}
+                      {(req.status === 'Being Prepared' || req.status === 'Payment Required' || actions.some((a: {needsPickupDate?: boolean}) => a.needsPickupDate)) && (
                         <div>
                           <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>
-                            Set Pickup Date
+                            Set Pickup Date *
                           </label>
                           <input
                             type="date"
                             value={pickupDates[req.id] || ''}
                             onChange={e => setPickupDates(prev => ({ ...prev, [req.id]: e.target.value }))}
+                            min={new Date().toISOString().split('T')[0]}
                             className="w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none"
                             style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
                           />
+                          <p className="text-xs mt-1" style={{ color: 'var(--text-faint)' }}>
+                            On this date, the document will automatically be marked Ready for Pickup and the student will be notified.
+                          </p>
                         </div>
                       )}
 
