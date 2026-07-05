@@ -1,3 +1,31 @@
+MCNP-ISAP SMART CAMPUS HELP DESK 
+Bachelor of Science in Information Technology
+Jaylord S. Victorio
+Christian Daniel T. Pascua
+Christopher Godwin Mabborang
+Aeron M. Vagay
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
