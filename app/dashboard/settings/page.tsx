@@ -19,6 +19,7 @@ type Profile = {
   course: string | null
   year_level: string | null
   created_at: string
+  photo_url: string | null
 }
 
 function NotificationToggles({ accentColor, email, userId }: { accentColor: string; email: string; userId: string }) {
@@ -329,11 +330,19 @@ export default function SettingsPage() {
 
         {/* Profile summary */}
         <div className="px-5 py-4 flex items-center gap-4 border-b" style={{ borderColor: 'var(--border)' }}>
-          <div
-            className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold shrink-0"
-            style={{ backgroundColor: isISAP ? '#fee2e2' : '#dbeafe', color: accentColor }}
-          >
-            {profile?.name?.charAt(0)?.toUpperCase() || '?'}
+          <div className="w-12 h-12 rounded-full overflow-hidden shrink-0 flex items-center justify-center text-lg font-bold"
+            style={{ backgroundColor: isISAP ? '#fee2e2' : '#dbeafe', color: accentColor }}>
+            {profile?.photo_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={`${profile.photo_url}?v=${Date.now()}`}
+                alt="Profile"
+                className="w-full h-full object-cover"
+                onError={e => { e.currentTarget.style.display = 'none' }}
+              />
+            ) : (
+              profile?.name?.charAt(0)?.toUpperCase() || '?'
+            )}
           </div>
           <div>
             <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>{profile?.name}</p>
