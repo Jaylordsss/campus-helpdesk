@@ -18,6 +18,7 @@ export default function NotificationBell() {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [open, setOpen] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
+  const [openUpward, setOpenUpward] = useState(false)
   const buttonRef = useRef<HTMLButtonElement>(null)
 
   const unreadCount = notifications.filter(n => !n.is_read).length
@@ -46,6 +47,17 @@ export default function NotificationBell() {
     init()
     return () => { if (intervalId) clearInterval(intervalId) }
   }, [])
+
+  const handleOpen = () => {
+    // Detect if bell is in bottom half of screen — open upward if so
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect()
+      const screenMid = window.innerHeight / 2
+      setOpenUpward(rect.top > screenMid)
+    }
+    setOpen(prev => !prev)
+    if (!open && unreadCount > 0) markAllRead()
+  }
 
   const markAllRead = async () => {
     if (!userId) return
@@ -90,11 +102,8 @@ export default function NotificationBell() {
       <div className="relative shrink-0">
         <button
           ref={buttonRef}
-          onClick={() => {
-            setOpen(prev => !prev)
-            if (!open && unreadCount > 0) markAllRead()
-          }}
-          className="relative w-9 h-9 flex items-center justify-center rounded-xl hover:bg-black/5 dark:hover:bg-white/10 transition-all"
+          onClick={handleOpen}
+          className="relative w-9 h-9 flex items-center justify-center rounded-xl transition-all hover:bg-black/5 dark:hover:bg-white/10"
         >
           <Bell size={18} style={{ color: 'var(--text-muted)' }} />
           {unreadCount > 0 && (
@@ -104,39 +113,52 @@ export default function NotificationBell() {
           )}
         </button>
 
-        {/* Dropdown — appears BELOW the bell, above on mobile */}
         {open && (
           <div
             className="absolute z-50 rounded-2xl shadow-xl overflow-hidden"
             style={{
-              width: '320px',
-              top: '44px',
-              right: '0px',
+              width: '300px',
+              // Open upward if bell is at bottom (sidebar), downward if at top (header)
+              ...(openUpward
+                ? { bottom: '48px', right: '0px' }
+                : { top: '48px', right: '0px' }
+              ),
               backgroundColor: 'var(--bg-card)',
               border: '1px solid var(--border)',
             }}
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
+            <div
+              className="flex items-center justify-between px-4 py-3"
+              style={{ borderBottom: '1px solid var(--border)' }}
+            >
               <div className="flex items-center gap-2">
-                <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>Notifications</p>
+                <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>
+                  Notifications
+                </p>
                 {unreadCount > 0 && (
                   <span className="text-xs font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-full">
                     {unreadCount} new
                   </span>
                 )}
               </div>
-              <button onClick={() => setOpen(false)} style={{ color: 'var(--text-faint)' }}>
+              <button
+                onClick={() => setOpen(false)}
+                style={{ color: 'var(--text-faint)' }}
+                className="hover:opacity-70 transition-opacity"
+              >
                 <X size={16} />
               </button>
             </div>
 
             {/* List */}
-            <div className="max-h-80 overflow-y-auto">
+            <div className="max-h-72 overflow-y-auto">
               {notifications.length === 0 ? (
                 <div className="py-10 text-center">
                   <Bell size={24} className="mx-auto mb-2" style={{ color: 'var(--text-faint)' }} />
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>No notifications yet</p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    No notifications yet
+                  </p>
                 </div>
               ) : (
                 notifications.map(notif => (
@@ -153,19 +175,28 @@ export default function NotificationBell() {
                       backgroundColor: !notif.is_read ? 'rgba(59,130,246,0.06)' : undefined,
                     }}
                   >
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5" style={{ backgroundColor: 'var(--bg)' }}>
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5"
+                      style={{ backgroundColor: 'var(--bg)' }}
+                    >
                       {getIcon(notif.type)}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
-                        <p className={`text-xs leading-tight ${!notif.is_read ? 'font-bold' : 'font-semibold'}`} style={{ color: 'var(--text)' }}>
+                        <p
+                          className={`text-xs leading-tight ${!notif.is_read ? 'font-bold' : 'font-semibold'}`}
+                          style={{ color: 'var(--text)' }}
+                        >
                           {notif.title}
                         </p>
                         {!notif.is_read && (
                           <div className="w-2 h-2 bg-blue-500 rounded-full shrink-0 mt-1" />
                         )}
                       </div>
-                      <p className="text-xs mt-0.5 leading-relaxed line-clamp-2" style={{ color: 'var(--text-muted)' }}>
+                      <p
+                        className="text-xs mt-0.5 leading-relaxed line-clamp-2"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
                         {notif.message}
                       </p>
                       <p className="text-[10px] mt-1" style={{ color: 'var(--text-faint)' }}>
@@ -179,9 +210,18 @@ export default function NotificationBell() {
 
             {/* Footer */}
             {notifications.length > 0 && (
-              <div className="px-4 py-2.5 flex items-center justify-between" style={{ borderTop: '1px solid var(--border)' }}>
-                <p className="text-xs" style={{ color: 'var(--text-faint)' }}>{notifications.length} total</p>
-                <button onClick={markAllRead} className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+              <div
+                className="px-4 py-2.5 flex items-center justify-between"
+                style={{ borderTop: '1px solid var(--border)' }}
+              >
+                <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                  {notifications.length} total
+                </p>
+                <button
+                  onClick={markAllRead}
+                  className="text-xs font-semibold hover:opacity-70 transition-opacity"
+                  style={{ color: 'var(--text-muted)' }}
+                >
                   Mark all as read
                 </button>
               </div>
