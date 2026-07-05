@@ -52,7 +52,7 @@ export async function POST(request: Request) {
           body: content.length > 100 ? content.substring(0, 100) + '...' : content,
           icon: '/icons/icon-192x192.png',
           badge: '/icons/icon-192x192.png',
-          data: { link: '/dashboard/announcements' }
+          data: { link: '/dashboard/notifications' }
         })
 
         for (const student of students) {

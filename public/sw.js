@@ -121,13 +121,15 @@ self.addEventListener('push', function(event) {
 })
 
 self.addEventListener('notificationclick', function(event) {
-  console.log('[SW] Notification clicked')
   event.notification.close()
 
-  const link = (event.notification.data && event.notification.data.link) ? event.notification.data.link : '/dashboard'
+  const link = (event.notification.data && event.notification.data.link)
+    ? event.notification.data.link
+    : '/dashboard/notifications'
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
+      // If app is already open — navigate to the link
       for (var i = 0; i < clientList.length; i++) {
         var client = clientList[i]
         if ('focus' in client) {
@@ -135,7 +137,10 @@ self.addEventListener('notificationclick', function(event) {
           return client.focus()
         }
       }
-      if (clients.openWindow) return clients.openWindow(link)
+      // App is closed — open a new window to the link
+      if (clients.openWindow) {
+        return clients.openWindow(link)
+      }
     })
   )
 })

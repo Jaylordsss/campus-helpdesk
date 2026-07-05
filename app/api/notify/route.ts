@@ -37,7 +37,7 @@ export async function POST(request: Request) {
             body: message,
             icon: '/icons/icon-192x192.png',
             badge: '/icons/icon-192x192.png',
-            data: { link: link || '/dashboard' }
+            data: { link: '/dashboard/notifications' }
           })
 
           for (const sub of subs) {
