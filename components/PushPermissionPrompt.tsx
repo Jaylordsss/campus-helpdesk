@@ -78,7 +78,8 @@ export default function PushPermissionPrompt() {
   if (!show) return null
 
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-[90vw] max-w-sm animate-in slide-in-from-bottom-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/40">
+      <div className="w-full max-w-sm">
       <div className="bg-slate-900 rounded-2xl shadow-2xl p-5">
         <div className="flex items-start gap-4">
           <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center shrink-0">
@@ -110,6 +111,7 @@ export default function PushPermissionPrompt() {
           </button>
         </div>
       </div>
+    </div>
     </div>
   )
 }
