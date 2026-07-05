@@ -9,9 +9,11 @@ import {
   Menu, GraduationCap, Bot, ChevronRight,
   HelpCircle, Megaphone, IdCard, User
 } from 'lucide-react'
+import PushNotificationSetup from '@/components/PushNotificationSetup'
 import NotificationBell from '@/components/NotificationBell'
 import ThemeToggle from '@/components/ThemeToggle'
 import OfflineBanner from '@/components/OfflineBanner'
+
 
 const navItems = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -148,6 +150,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </p>
             </div>
             <div className="flex items-center gap-1 shrink-0">
+              <PushNotificationSetup />
               <ThemeToggle />
               <NotificationBell />
             </div>
@@ -189,6 +192,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               {profile?.school} Help Desk
             </span>
           </div>
+          <PushNotificationSetup />
           <ThemeToggle />
           <NotificationBell />
         </header>
