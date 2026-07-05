@@ -12,8 +12,11 @@ export async function POST(request: Request) {
     )
 
     // Get all students for this school
+    
+
     let query = supabase.from('profiles').select('id, name, email').eq('role', 'student')
     if (school !== 'BOTH') query = query.eq('school', school)
+    if (course_target && course_target !== 'ALL') query = query.eq('course', course_target)
     const { data: students } = await query
 
     if (!students || students.length === 0) {

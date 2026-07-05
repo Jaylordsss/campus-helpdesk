@@ -32,6 +32,7 @@ const emptyForm = {
   type: 'general',
   school: 'BOTH',
   expires_at: '',
+  course_target: 'ALL',
 }
 
 export default function AdminAnnouncementsPage() {
@@ -86,6 +87,7 @@ export default function AdminAnnouncementsPage() {
       expires_at: form.expires_at || null,
       created_by: user?.id,
       is_active: true,
+      course_target: form.course_target || 'ALL',
     }
 
     let announcementId = editId
@@ -108,6 +110,7 @@ export default function AdminAnnouncementsPage() {
           content: form.content.trim(),
           type: form.type,
           school: form.school,
+          course_target: form.course_target || 'ALL',
           adminName: adminName || 'Admin',
         })
       })
@@ -438,6 +441,35 @@ export default function AdminAnnouncementsPage() {
           })}
         </div>
       )}
+      {/* Course Target */}
+              <div className="sm:col-span-3">
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                  Target Course <span className="font-normal text-slate-400">(optional — leave ALL for everyone)</span>
+                </label>
+                <select
+                  value={form.course_target}
+                  onChange={e => setForm({ ...form, course_target: e.target.value })}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-slate-400 focus:outline-none"
+                  style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                >
+                  <option value="ALL">All Students</option>
+                  <optgroup label="ISAP Courses">
+                    <option value="Bachelor of Science in Information Technology">BS Information Technology</option>
+                    <option value="Bachelor of Science in Computer Engineering">BS Computer Engineering</option>
+                    <option value="Bachelor of Science in Social Work">BS Social Work</option>
+                    <option value="Bachelor of Science in Criminology">BS Criminology</option>
+                    <option value="Bachelor of Science in Business Administration">BS Business Administration</option>
+                    <option value="Bachelor of Science in Accountancy">BS Accountancy</option>
+                  </optgroup>
+                  <optgroup label="MCNP Courses">
+                    <option value="Bachelor of Science in Nursing">BS Nursing</option>
+                    <option value="Bachelor of Science in Medical Technology">BS Medical Technology</option>
+                    <option value="Bachelor of Science in Pharmacy">BS Pharmacy</option>
+                    <option value="Bachelor of Science in Physical Therapy">BS Physical Therapy</option>
+                  </optgroup>
+                </select>
+              </div>
     </div>
+    
   )
 }
