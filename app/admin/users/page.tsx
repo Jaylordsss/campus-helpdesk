@@ -2,9 +2,12 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/src/lib/supabase/client'
-import { Plus, X, Check, Users, Eye, EyeOff, GraduationCap, ShieldCheck, Pencil } from 'lucide-react'
+import {
+  Plus, Pencil, Trash2, Search, GraduationCap,
+  ShieldCheck, ChevronDown, X, Check, Eye, EyeOff
+} from 'lucide-react'
 
-type Profile = {
+type User = {
   id: string
   name: string
   email: string
@@ -22,36 +25,35 @@ type Course = {
   school: string
 }
 
-const emptyForm = {
-  name: '',
-  email: '',
-  password: '',
-  school: 'ISAP',
-  role: 'student',
-  student_id: '',
-  course: '',
-  year_level: '1st Year',
-}
-
 const yearOptions = ['1st Year', '2nd Year', '3rd Year', '4th Year']
 
+const emptyForm = {
+  name: '', email: '', password: '', role: 'student',
+  school: 'ISAP', student_id: '', course: '', year_level: '1st Year'
+}
+
 export default function AdminUsersPage() {
-  const [users, setUsers] = useState<Profile[]>([])
+  const [users, setUsers] = useState<User[]>([])
   const [courses, setCourses] = useState<Course[]>([])
   const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [schoolFilter, setSchoolFilter] = useState<'ALL' | 'ISAP' | 'MCNP'>('ALL')
+  const [courseFilter, setCourseFilter] = useState('ALL')
+  const [yearFilter, setYearFilter] = useState('ALL')
+  const [roleFilter, setRoleFilter] = useState<'ALL' | 'student' | 'admin'>('ALL')
   const [showForm, setShowForm] = useState(false)
-  const [editUserId, setEditUserId] = useState<string | null>(null)
+  const [editUser, setEditUser] = useState<User | null>(null)
   const [form, setForm] = useState(emptyForm)
-  const [showPassword, setShowPassword] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
-  const [filterSchool, setFilterSchool] = useState<'ALL' | 'ISAP' | 'MCNP'>('ALL')
-  const [search, setSearch] = useState('')
-
-  const supabase = createClient()
+  const [showPassword, setShowPassword] = useState(false)
+  const [showCourseDropdown, setShowCourseDropdown] = useState(false)
 
   const fetchUsers = async () => {
+    const supabase = createClient()
     const { data } = await supabase
       .from('profiles')
       .select('*')
@@ -61,11 +63,11 @@ export default function AdminUsersPage() {
   }
 
   const fetchCourses = async () => {
+    const supabase = createClient()
     const { data } = await supabase
       .from('courses')
       .select('id, name, school')
-      .order('school')
-      .order('name')
+      .order('school').order('name')
     setCourses(data || [])
   }
 
@@ -74,108 +76,156 @@ export default function AdminUsersPage() {
     fetchCourses()
   }, [])
 
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    setSuccess('')
-    setSaving(true)
+  // Filtered courses based on selected school in form
+  const formCourses = courses.filter(c => c.school === form.school)
 
-    const res = await fetch('/api/admin/create-user', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: form.name,
-        email: form.email,
-        password: form.password,
-        school: form.school,
-        role: form.role,
-        student_id: form.student_id || null,
-        course: form.course || null,
-        year_level: form.year_level || null,
-      }),
-    })
+  // Filtered courses for the course filter dropdown
+  const filterCourses = schoolFilter === 'ALL'
+    ? courses
+    : courses.filter(c => c.school === schoolFilter)
 
-    const result = await res.json()
-    if (result.error) {
-      setError(result.error)
-    } else {
-      setSuccess(`Account created for ${form.name}`)
-      setForm(emptyForm)
-      setShowForm(false)
-      await fetchUsers()
+  // Apply all filters
+  const filtered = users.filter(u => {
+    const matchSearch = !search ||
+      u.name?.toLowerCase().includes(search.toLowerCase()) ||
+      u.email?.toLowerCase().includes(search.toLowerCase()) ||
+      u.student_id?.toLowerCase().includes(search.toLowerCase())
+    const matchSchool = schoolFilter === 'ALL' || u.school === schoolFilter
+    const matchCourse = courseFilter === 'ALL' || u.course === courseFilter
+    const matchYear = yearFilter === 'ALL' || u.year_level === yearFilter
+    const matchRole = roleFilter === 'ALL' || u.role === roleFilter
+    return matchSearch && matchSchool && matchCourse && matchYear && matchRole
+  })
+
+  const handleSave = async () => {
+    if (!form.name.trim() || !form.email.trim()) {
+      setError('Name and email are required')
+      return
     }
-    setSaving(false)
-  }
-
-  const handleUpdate = async () => {
-    if (!editUserId) return
+    if (!editUser && !form.password.trim()) {
+      setError('Password is required for new accounts')
+      return
+    }
     setSaving(true)
     setError('')
 
-    await supabase
-      .from('profiles')
-      .update({
-        name: form.name,
-        student_id: form.student_id || null,
-        course: form.course || null,
-        year_level: form.year_level || null,
-        school: form.school,
-      })
-      .eq('id', editUserId)
+    try {
+      if (editUser) {
+        // Update existing user
+        const supabase = createClient()
+        const { error: updateError } = await supabase
+          .from('profiles')
+          .update({
+            name: form.name.trim(),
+            school: form.school,
+            student_id: form.student_id.trim() || null,
+            course: form.course.trim() || null,
+            year_level: form.year_level,
+            role: form.role,
+          })
+          .eq('id', editUser.id)
 
-    setSuccess(`Profile updated for ${form.name}`)
-    setEditUserId(null)
-    setShowForm(false)
-    setForm(emptyForm)
-    await fetchUsers()
-    setSaving(false)
+        if (updateError) throw updateError
+        setSuccess('User updated successfully!')
+      } else {
+        // Create new user
+        const res = await fetch('/api/admin/create-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: form.name.trim(),
+            email: form.email.trim(),
+            password: form.password,
+            role: form.role,
+            school: form.school,
+            student_id: form.student_id.trim() || null,
+            course: form.course.trim() || null,
+            year_level: form.year_level,
+          })
+        })
+        const result = await res.json()
+        if (result.error) throw new Error(result.error)
+        setSuccess('Account created successfully!')
+      }
+
+      setTimeout(() => setSuccess(''), 3000)
+      setShowForm(false)
+      setEditUser(null)
+      setForm(emptyForm)
+      await fetchUsers()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const openEditUser = (user: Profile) => {
+  const handleEdit = (user: User) => {
+    setEditUser(user)
     setForm({
       name: user.name || '',
       email: user.email || '',
       password: '',
-      school: user.school || 'ISAP',
-      role: user.role || 'student',
+      role: user.role,
+      school: user.school,
       student_id: user.student_id || '',
       course: user.course || '',
       year_level: user.year_level || '1st Year',
     })
-    setEditUserId(user.id)
-    setShowForm(true)
     setError('')
+    setShowForm(true)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const filteredCourses = courses.filter(c => c.school === form.school)
+  const handleDelete = async (userId: string) => {
+    setDeleting(true)
+    try {
+      const res = await fetch('/api/admin/delete-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId })
+      })
+      const result = await res.json()
+      if (result.error) throw new Error(result.error)
+      setDeleteId(null)
+      setSuccess('User deleted successfully!')
+      setTimeout(() => setSuccess(''), 3000)
+      await fetchUsers()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete')
+    } finally {
+      setDeleting(false)
+    }
+  }
 
-  const filtered = users
-    .filter(u => filterSchool === 'ALL' || u.school === filterSchool)
-    .filter(u =>
-      u.name?.toLowerCase().includes(search.toLowerCase()) ||
-      u.email?.toLowerCase().includes(search.toLowerCase()) ||
-      u.student_id?.toLowerCase().includes(search.toLowerCase())
-    )
+  const resetFilters = () => {
+    setSearch('')
+    setSchoolFilter('ALL')
+    setCourseFilter('ALL')
+    setYearFilter('ALL')
+    setRoleFilter('ALL')
+  }
+
+  const hasFilters = search || schoolFilter !== 'ALL' || courseFilter !== 'ALL' || yearFilter !== 'ALL' || roleFilter !== 'ALL'
+
+  const adminCount = users.filter(u => u.role === 'admin').length
+  const studentCount = users.filter(u => u.role === 'student').length
+  const isapCount = users.filter(u => u.school === 'ISAP').length
+  const mcnpCount = users.filter(u => u.school === 'MCNP').length
 
   return (
     <div className="space-y-6">
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Users</h1>
-          <p className="text-sm text-slate-400 mt-1">
-            Create and manage student accounts with ID numbers
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--text)' }}>Users</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+            Manage student and admin accounts
           </p>
         </div>
         <button
-          onClick={() => {
-            setShowForm(true)
-            setEditUserId(null)
-            setForm(emptyForm)
-            setError('')
-            setSuccess('')
-          }}
+          onClick={() => { setShowForm(true); setEditUser(null); setForm(emptyForm); setError('') }}
           className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-semibold rounded-xl transition-all"
         >
           <Plus size={16} />
@@ -183,351 +233,451 @@ export default function AdminUsersPage() {
         </button>
       </div>
 
-      {/* Success */}
+      {/* Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { label: 'Total Users', value: users.length, color: 'text-slate-700' },
+          { label: 'Students', value: studentCount, color: 'text-slate-700' },
+          { label: 'ISAP', value: isapCount, color: 'text-red-600' },
+          { label: 'MCNP', value: mcnpCount, color: 'text-blue-600' },
+        ].map((s, i) => (
+          <div key={i} className="rounded-2xl border p-4" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+            <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{s.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Success / Error */}
       {success && (
-        <div className="bg-emerald-50 border border-emerald-100 text-emerald-700 text-sm px-4 py-3 rounded-xl">
-          {success}
+        <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3">
+          <Check size={15} className="text-emerald-600 shrink-0" />
+          <p className="text-xs font-semibold text-emerald-700">{success}</p>
+        </div>
+      )}
+      {error && !showForm && (
+        <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+          <p className="text-xs text-red-600">{error}</p>
         </div>
       )}
 
-      {/* Form */}
+      {/* Create / Edit Form */}
       {showForm && (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6 space-y-4">
+        <div className="rounded-2xl border p-6 space-y-5" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100">
-              {editUserId ? 'Edit Student Info' : 'Create New Account'}
+            <h2 className="text-sm font-bold" style={{ color: 'var(--text)' }}>
+              {editUser ? 'Edit User' : 'Create New Account'}
             </h2>
-            <button
-              onClick={() => { setShowForm(false); setEditUserId(null); setError('') }}
-              className="text-slate-400 hover:text-slate-600"
-            >
+            <button onClick={() => { setShowForm(false); setEditUser(null); setError('') }}
+              style={{ color: 'var(--text-faint)' }}>
               <X size={18} />
             </button>
           </div>
 
-          <form onSubmit={editUserId ? e => { e.preventDefault(); handleUpdate() } : handleCreate} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Name */}
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Full Name *</label>
+              <input
+                value={form.name}
+                onChange={e => setForm({ ...form, name: e.target.value })}
+                placeholder="Full name"
+                className="w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none"
+                style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+              />
+            </div>
 
-            {/* Role — only for create */}
-            {!editUserId && (
+            {/* Email */}
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Email *</label>
+              <input
+                value={form.email}
+                onChange={e => setForm({ ...form, email: e.target.value })}
+                placeholder="Email address"
+                disabled={!!editUser}
+                className="w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none disabled:opacity-50"
+                style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+              />
+            </div>
+
+            {/* Password — only for create */}
+            {!editUser && (
               <div>
-                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
-                  Account type
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {(['student', 'admin'] as const).map(r => (
-                    <button
-                      key={r}
-                      type="button"
-                      onClick={() => setForm({ ...form, role: r })}
-                      className={`flex items-center gap-2 p-3 rounded-xl border-2 transition-all ${
-                        form.role === r
-                          ? 'border-slate-400 bg-slate-50 dark:bg-slate-700'
-                          : 'border-slate-100 dark:border-slate-600 hover:border-slate-200'
-                      }`}
-                    >
-                      {r === 'admin'
-                        ? <ShieldCheck size={16} className="text-slate-500" />
-                        : <GraduationCap size={16} className="text-slate-500" />
-                      }
-                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 capitalize">{r}</span>
-                    </button>
-                  ))}
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Password *</label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={form.password}
+                    onChange={e => setForm({ ...form, password: e.target.value })}
+                    placeholder="Password"
+                    className="w-full rounded-xl border px-4 py-2.5 pr-10 text-sm focus:outline-none"
+                    style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                  />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-faint)' }}>
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
                 </div>
               </div>
             )}
 
-            {/* School */}
+            {/* Role */}
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">School</label>
-              <div className="grid grid-cols-2 gap-2">
-                {(['ISAP', 'MCNP'] as const).map(s => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setForm({ ...form, school: s, course: '' })}
-                    className={`p-3 rounded-xl border-2 text-left transition-all ${
-                      form.school === s
-                        ? s === 'ISAP'
-                          ? 'border-red-400 bg-red-50 dark:bg-red-950/30'
-                          : 'border-blue-400 bg-blue-50 dark:bg-blue-950/30'
-                        : 'border-slate-100 dark:border-slate-600 hover:border-slate-200'
-                    }`}
-                  >
-                    <p className={`text-xs font-bold ${
-                      form.school === s
-                        ? s === 'ISAP' ? 'text-red-700' : 'text-blue-700'
-                        : 'text-slate-700 dark:text-slate-300'
-                    }`}>{s}</p>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Role</label>
+              <div className="flex gap-2">
+                {(['student', 'admin'] as const).map(r => (
+                  <button key={r} type="button" onClick={() => setForm({ ...form, role: r })}
+                    className="flex-1 py-2.5 rounded-xl border-2 text-xs font-bold capitalize transition-all"
+                    style={{
+                      borderColor: form.role === r ? '#1e293b' : 'var(--border)',
+                      backgroundColor: form.role === r ? '#1e293b' : 'var(--bg)',
+                      color: form.role === r ? '#ffffff' : 'var(--text-muted)',
+                    }}>
+                    {r}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Full name */}
+            {/* School */}
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">Full name</label>
-              <input
-                type="text"
-                required
-                value={form.name}
-                onChange={e => setForm({ ...form, name: e.target.value })}
-                placeholder="Student full name"
-                className="w-full rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:border-slate-400 focus:outline-none"
-              />
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>School</label>
+              <div className="flex gap-2">
+                {(['ISAP', 'MCNP'] as const).map(s => (
+                  <button key={s} type="button"
+                    onClick={() => setForm({ ...form, school: s, course: '' })}
+                    className="flex-1 py-2.5 rounded-xl border-2 text-xs font-bold transition-all"
+                    style={{
+                      borderColor: form.school === s ? (s === 'ISAP' ? '#dc2626' : '#2563eb') : 'var(--border)',
+                      backgroundColor: form.school === s ? (s === 'ISAP' ? '#fee2e2' : '#dbeafe') : 'var(--bg)',
+                      color: form.school === s ? (s === 'ISAP' ? '#b91c1c' : '#1d4ed8') : 'var(--text-muted)',
+                    }}>
+                    {s}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Student ID */}
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
-                Student ID Number
-              </label>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Student ID</label>
               <input
-                type="text"
                 value={form.student_id}
                 onChange={e => setForm({ ...form, student_id: e.target.value })}
                 placeholder="e.g. 2024-0001"
-                className="w-full rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:border-slate-400 focus:outline-none font-mono"
+                className="w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none font-mono"
+                style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
               />
             </div>
 
             {/* Course */}
-            {form.role === 'student' && (
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">Course</label>
-                <select
-                  value={form.course}
-                  onChange={e => setForm({ ...form, course: e.target.value })}
-                  className="w-full rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:border-slate-400 focus:outline-none"
-                >
-                  <option value="">Select course</option>
-                  {filteredCourses.map(c => (
-                    <option key={c.id} value={c.name}>{c.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {/* Year level */}
-            {form.role === 'student' && (
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">Year Level</label>
-                <div className="flex gap-2 flex-wrap">
-                  {yearOptions.map(y => (
-                    <button
-                      key={y}
-                      type="button"
-                      onClick={() => setForm({ ...form, year_level: y })}
-                      className={`px-3 py-2 rounded-lg text-xs font-semibold border-2 transition-all ${
-                        form.year_level === y
-                          ? 'border-slate-600 bg-slate-800 text-white'
-                          : 'border-slate-100 dark:border-slate-600 text-slate-500 hover:border-slate-300'
-                      }`}
-                    >
-                      {y}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Email — only for create */}
-            {!editUserId && (
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">Email</label>
-                <input
-                  type="email"
-                  required
-                  value={form.email}
-                  onChange={e => setForm({ ...form, email: e.target.value })}
-                  placeholder="student@email.com"
-                  className="w-full rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:border-slate-400 focus:outline-none"
-                />
-              </div>
-            )}
-
-            {/* Password — only for create */}
-            {!editUserId && (
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">Password</label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    minLength={6}
-                    value={form.password}
-                    onChange={e => setForm({ ...form, password: e.target.value })}
-                    placeholder="At least 6 characters"
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-2.5 pr-11 text-sm text-slate-900 dark:text-slate-100 focus:border-slate-400 focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
-                  >
-                    {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {error && (
-              <p className="text-xs text-red-600 bg-red-50 border border-red-100 px-3 py-2 rounded-lg">
-                {error}
-              </p>
-            )}
-
-            <div className="flex items-center gap-2 pt-2">
-              <button
-                type="submit"
-                disabled={saving}
-                className="flex items-center gap-2 px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-semibold rounded-xl disabled:opacity-50 transition-all"
-              >
-                <Check size={15} />
-                {saving
-                  ? 'Saving...'
-                  : editUserId ? 'Update Student' : 'Create Account'
-                }
-              </button>
+            <div className="relative">
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Course</label>
               <button
                 type="button"
-                onClick={() => { setShowForm(false); setEditUserId(null); setError('') }}
-                className="px-5 py-2.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-sm font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700"
+                onClick={() => setShowCourseDropdown(!showCourseDropdown)}
+                className="w-full rounded-xl border px-4 py-2.5 text-sm text-left flex items-center justify-between focus:outline-none"
+                style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: form.course ? 'var(--text)' : 'var(--text-faint)' }}
               >
-                Cancel
+                <span className="truncate">{form.course || 'Select course...'}</span>
+                <ChevronDown size={15} style={{ color: 'var(--text-faint)' }} />
               </button>
+              {showCourseDropdown && (
+                <div className="absolute z-20 top-full left-0 right-0 mt-1 rounded-xl border shadow-xl overflow-hidden"
+                  style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+                  <div className="max-h-48 overflow-y-auto">
+                    <button
+                      type="button"
+                      onClick={() => { setForm({ ...form, course: '' }); setShowCourseDropdown(false) }}
+                      className="w-full text-left px-4 py-2.5 text-xs hover:bg-black/5 dark:hover:bg-white/5"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      — None —
+                    </button>
+                    {formCourses.map(c => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => { setForm({ ...form, course: c.name }); setShowCourseDropdown(false) }}
+                        className="w-full text-left px-4 py-2.5 text-xs hover:bg-black/5 dark:hover:bg-white/5"
+                        style={{
+                          color: 'var(--text)',
+                          backgroundColor: form.course === c.name ? 'rgba(0,0,0,0.05)' : undefined,
+                          fontWeight: form.course === c.name ? 600 : undefined,
+                        }}
+                      >
+                        {c.name}
+                      </button>
+                    ))}
+                    {formCourses.length === 0 && (
+                      <p className="px-4 py-3 text-xs" style={{ color: 'var(--text-faint)' }}>No courses for {form.school}</p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-          </form>
+
+            {/* Year Level */}
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Year Level</label>
+              <div className="grid grid-cols-4 gap-1.5">
+                {yearOptions.map(y => (
+                  <button key={y} type="button" onClick={() => setForm({ ...form, year_level: y })}
+                    className="py-2 rounded-xl border-2 text-xs font-semibold transition-all"
+                    style={{
+                      borderColor: form.year_level === y ? '#1e293b' : 'var(--border)',
+                      backgroundColor: form.year_level === y ? '#1e293b' : 'var(--bg)',
+                      color: form.year_level === y ? '#ffffff' : 'var(--text-muted)',
+                    }}>
+                    {y.replace(' Year', '')}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {error && (
+            <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+              <p className="text-xs text-red-600">{error}</p>
+            </div>
+          )}
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex items-center gap-2 px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-semibold rounded-xl disabled:opacity-50 transition-all"
+            >
+              {saving ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Check size={15} />}
+              {saving ? 'Saving...' : editUser ? 'Save Changes' : 'Create Account'}
+            </button>
+            <button
+              onClick={() => { setShowForm(false); setEditUser(null); setError('') }}
+              className="px-5 py-2.5 rounded-xl border text-sm font-semibold transition-all"
+              style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       )}
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        <div className="flex items-center gap-2">
-          {(['ALL', 'ISAP', 'MCNP'] as const).map(s => (
-            <button
-              key={s}
-              onClick={() => setFilterSchool(s)}
-              className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                filterSchool === s
-                  ? s === 'ISAP' ? 'bg-red-100 text-red-700'
-                    : s === 'MCNP' ? 'bg-blue-100 text-blue-700'
-                    : 'bg-slate-800 text-white'
-                  : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-500'
-              }`}
-            >
-              {s}
-            </button>
-          ))}
+      <div className="rounded-2xl border p-4 space-y-3" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+
+        {/* Search */}
+        <div className="relative">
+          <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-faint)' }} />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search by name, email, or student ID..."
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl border text-sm focus:outline-none"
+            style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+          />
         </div>
-        <input
-          type="text"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search by name, email, or student ID..."
-          className="flex-1 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-2 text-sm text-slate-900 dark:text-slate-100 focus:border-slate-400 focus:outline-none"
-        />
-        <span className="text-xs text-slate-400 shrink-0">{filtered.length} users</span>
+
+        {/* Filter row */}
+        <div className="flex flex-wrap gap-2">
+
+          {/* Role filter */}
+          <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--border)' }}>
+            {(['ALL', 'student', 'admin'] as const).map(r => (
+              <button key={r} onClick={() => setRoleFilter(r)}
+                className="px-3 py-1.5 text-xs font-semibold capitalize transition-all"
+                style={{
+                  backgroundColor: roleFilter === r ? '#1e293b' : 'var(--bg)',
+                  color: roleFilter === r ? '#ffffff' : 'var(--text-muted)',
+                }}>
+                {r === 'ALL' ? 'All Roles' : r === 'admin' ? '🛡 Admin' : '👤 Student'}
+              </button>
+            ))}
+          </div>
+
+          {/* School filter */}
+          <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--border)' }}>
+            {(['ALL', 'ISAP', 'MCNP'] as const).map(s => (
+              <button key={s} onClick={() => { setSchoolFilter(s); setCourseFilter('ALL') }}
+                className="px-3 py-1.5 text-xs font-bold transition-all"
+                style={{
+                  backgroundColor: schoolFilter === s
+                    ? s === 'ISAP' ? '#b91c1c' : s === 'MCNP' ? '#1d4ed8' : '#1e293b'
+                    : 'var(--bg)',
+                  color: schoolFilter === s ? '#ffffff' : 'var(--text-muted)',
+                }}>
+                {s === 'ALL' ? 'All Schools' : s}
+              </button>
+            ))}
+          </div>
+
+          {/* Course filter */}
+          <select
+            value={courseFilter}
+            onChange={e => setCourseFilter(e.target.value)}
+            className="px-3 py-1.5 rounded-xl border text-xs font-semibold focus:outline-none"
+            style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+          >
+            <option value="ALL">All Courses</option>
+            {filterCourses.map(c => (
+              <option key={c.id} value={c.name}>{c.name}</option>
+            ))}
+          </select>
+
+          {/* Year filter */}
+          <select
+            value={yearFilter}
+            onChange={e => setYearFilter(e.target.value)}
+            className="px-3 py-1.5 rounded-xl border text-xs font-semibold focus:outline-none"
+            style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+          >
+            <option value="ALL">All Year Levels</option>
+            {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+
+          {/* Reset */}
+          {hasFilters && (
+            <button onClick={resetFilters}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all hover:bg-red-50 hover:text-red-600 hover:border-red-200"
+              style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
+              <X size={12} />
+              Reset
+            </button>
+          )}
+        </div>
+
+        {/* Result count */}
+        <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
+          Showing <span className="font-bold" style={{ color: 'var(--text)' }}>{filtered.length}</span> of {users.length} users
+          {hasFilters && ' (filtered)'}
+        </p>
       </div>
 
-      {/* Users table */}
+      {/* Users Table */}
       {loading ? (
         <div className="flex justify-center py-12">
           <div className="w-6 h-6 border-[3px] border-slate-200 border-t-slate-500 rounded-full animate-spin" />
         </div>
+      ) : filtered.length === 0 ? (
+        <div className="rounded-2xl border p-10 text-center" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+          <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>No users found</p>
+          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Try adjusting your filters</p>
+        </div>
       ) : (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  <th className="text-left text-xs font-semibold text-slate-400 px-5 py-3">Name</th>
-                  <th className="text-left text-xs font-semibold text-slate-400 px-5 py-3">Student ID</th>
-                  <th className="text-left text-xs font-semibold text-slate-400 px-5 py-3">Course</th>
-                  <th className="text-left text-xs font-semibold text-slate-400 px-5 py-3">Year</th>
-                  <th className="text-left text-xs font-semibold text-slate-400 px-5 py-3">School</th>
-                  <th className="text-left text-xs font-semibold text-slate-400 px-5 py-3">Role</th>
-                  <th className="text-left text-xs font-semibold text-slate-400 px-5 py-3">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(user => (
-                  <tr
-                    key={user.id}
-                    className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
-                    style={{ borderBottom: '1px solid var(--border)' }}
-                  >
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                          user.role === 'admin' ? 'bg-slate-100 text-slate-600 dark:bg-slate-600 dark:text-slate-200'
-                            : user.school === 'ISAP' ? 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-400'
-                            : 'bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400'
-                        }`}>
-                          {user.name?.charAt(0).toUpperCase() || '?'}
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{user.name}</p>
-                          <p className="text-xs text-slate-400">{user.email}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3">
-                      <span className="text-xs font-mono text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-lg">
-                        {user.student_id || '—'}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3">
-                      <p className="text-xs text-slate-500 dark:text-slate-400 max-w-32 truncate">
-                        {user.course || '—'}
-                      </p>
-                    </td>
-                    <td className="px-5 py-3">
-                      <span className="text-xs text-slate-500 dark:text-slate-400">
-                        {user.year_level || '—'}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3">
-                      <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-                        user.school === 'ISAP'
-                          ? 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-400'
-                          : 'bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400'
-                      }`}>
-                        {user.school}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-1.5">
-                        {user.role === 'admin'
-                          ? <ShieldCheck size={13} className="text-slate-500" />
-                          : <GraduationCap size={13} className="text-slate-400" />
-                        }
-                        <span className="text-xs font-medium text-slate-600 dark:text-slate-400 capitalize">
-                          {user.role}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3">
-                      <button
-                        onClick={() => openEditUser(user)}
-                        className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-all"
-                      >
-                        <Pencil size={12} />
-                        Edit
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {filtered.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="px-5 py-12 text-center">
-                      <Users size={28} className="text-slate-300 mx-auto mb-2" />
-                      <p className="text-sm text-slate-400">No users found</p>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+        <div className="rounded-2xl border overflow-hidden" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+          {/* Table header */}
+          <div className="grid grid-cols-12 gap-3 px-5 py-3 text-xs font-bold uppercase tracking-widest"
+            style={{ backgroundColor: 'var(--bg)', color: 'var(--text-faint)', borderBottom: '1px solid var(--border)' }}>
+            <div className="col-span-4">Name</div>
+            <div className="col-span-2">Student ID</div>
+            <div className="col-span-3 hidden sm:block">Course</div>
+            <div className="col-span-1 hidden sm:block">Year</div>
+            <div className="col-span-1">School</div>
+            <div className="col-span-1">Actions</div>
           </div>
+
+          {/* Rows */}
+          {filtered.map((user, i) => (
+            <div
+              key={user.id}
+              className="grid grid-cols-12 gap-3 px-5 py-4 items-center transition-all hover:bg-black/5 dark:hover:bg-white/5"
+              style={{ borderBottom: i < filtered.length - 1 ? '1px solid var(--border)' : 'none' }}
+            >
+              {/* Name + email */}
+              <div className="col-span-4 flex items-center gap-3 min-w-0">
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${
+                  user.school === 'ISAP' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                }`}>
+                  {user.name?.charAt(0)?.toUpperCase() || '?'}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-semibold truncate" style={{ color: 'var(--text)' }}>{user.name}</p>
+                    {user.role === 'admin' && (
+                      <ShieldCheck size={12} className="text-slate-400 shrink-0" />
+                    )}
+                  </div>
+                  <p className="text-xs truncate" style={{ color: 'var(--text-faint)' }}>{user.email}</p>
+                </div>
+              </div>
+
+              {/* Student ID */}
+              <div className="col-span-2">
+                {user.student_id ? (
+                  <span className="text-xs font-mono font-semibold px-2 py-1 rounded-lg"
+                    style={{ backgroundColor: 'var(--bg)', color: 'var(--text)' }}>
+                    {user.student_id}
+                  </span>
+                ) : (
+                  <span className="text-xs" style={{ color: 'var(--text-faint)' }}>—</span>
+                )}
+              </div>
+
+              {/* Course */}
+              <div className="col-span-3 hidden sm:block">
+                <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
+                  {user.course || <span style={{ color: 'var(--text-faint)' }}>—</span>}
+                </p>
+              </div>
+
+              {/* Year */}
+              <div className="col-span-1 hidden sm:block">
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  {user.year_level?.replace(' Year', '') || '—'}
+                </p>
+              </div>
+
+              {/* School */}
+              <div className="col-span-1">
+                <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
+                  user.school === 'ISAP'
+                    ? 'bg-red-100 text-red-700'
+                    : 'bg-blue-100 text-blue-700'
+                }`}>
+                  {user.school}
+                </span>
+              </div>
+
+              {/* Actions */}
+              <div className="col-span-1 flex items-center gap-1">
+                <button
+                  onClick={() => handleEdit(user)}
+                  className="p-1.5 rounded-lg transition-all hover:bg-black/5 dark:hover:bg-white/10"
+                  style={{ color: 'var(--text-muted)' }}
+                  title="Edit user"
+                >
+                  <Pencil size={14} />
+                </button>
+
+                {deleteId === user.id ? (
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleDelete(user.id)}
+                      disabled={deleting}
+                      className="text-[10px] font-bold text-red-600 px-2 py-1 rounded-lg hover:bg-red-50 transition-all"
+                    >
+                      {deleting ? '...' : 'Yes'}
+                    </button>
+                    <button
+                      onClick={() => setDeleteId(null)}
+                      className="text-[10px] font-bold px-2 py-1 rounded-lg hover:bg-black/5 transition-all"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      No
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setDeleteId(user.id)}
+                    className="p-1.5 rounded-lg transition-all hover:bg-red-50 hover:text-red-500"
+                    style={{ color: 'var(--text-faint)' }}
+                    title="Delete user"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
