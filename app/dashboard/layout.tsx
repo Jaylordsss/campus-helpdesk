@@ -7,7 +7,7 @@ import {
   LayoutDashboard, BookOpen, CreditCard,
   Map, MessageSquare, Star, LogOut,
   Menu, GraduationCap, Bot, ChevronRight,
-  HelpCircle, Megaphone, IdCard, User, Bell, Settings
+  HelpCircle, Megaphone, IdCard, User, Bell, Settings, FileText
 } from 'lucide-react'
 import NotificationBell from '@/components/NotificationBell'
 import ThemeToggle from '@/components/ThemeToggle'
@@ -19,6 +19,7 @@ const navItems = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { label: 'Announcements', href: '/dashboard/announcements', icon: Megaphone },
   { label: 'AI Assistant', href: '/dashboard/chat', icon: Bot },
+  { label: 'Documents', href: '/dashboard/documents', icon: FileText },
   { label: 'Courses', href: '/dashboard/courses', icon: BookOpen },
   { label: 'Tuition', href: '/dashboard/tuition', icon: CreditCard },
   { label: 'Campus Map', href: '/dashboard/map', icon: Map },
@@ -26,8 +27,6 @@ const navItems = [
   { label: 'Inquiries', href: '/dashboard/inquiries', icon: MessageSquare },
   { label: 'Feedback', href: '/dashboard/feedback', icon: Star },
   { label: 'Notifications', href: '/dashboard/notifications', icon: Bell },
-  { label: 'My Profile', href: '/dashboard/profile', icon: User },
-  { label: 'My ID Card', href: '/dashboard/id-card', icon: IdCard },
   { label: 'Settings', href: '/dashboard/settings', icon: Settings },
 ]
 
