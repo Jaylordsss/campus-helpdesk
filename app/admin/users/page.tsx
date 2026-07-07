@@ -552,7 +552,7 @@ export default function AdminUsersPage() {
         </p>
       </div>
 
-      {/* Users Table */}
+      {/* Users List */}
       {loading ? (
         <div className="flex justify-center py-12">
           <div className="w-6 h-6 border-[3px] border-slate-200 border-t-slate-500 rounded-full animate-spin" />
@@ -563,122 +563,232 @@ export default function AdminUsersPage() {
           <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Try adjusting your filters</p>
         </div>
       ) : (
-        <div className="rounded-2xl border overflow-hidden" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
-          {/* Table header */}
-          <div className="grid grid-cols-12 gap-3 px-5 py-3 text-xs font-bold uppercase tracking-widest"
-            style={{ backgroundColor: 'var(--bg)', color: 'var(--text-faint)', borderBottom: '1px solid var(--border)' }}>
-            <div className="col-span-4">Name</div>
-            <div className="col-span-2">Student ID</div>
-            <div className="col-span-3 hidden sm:block">Course</div>
-            <div className="col-span-1 hidden sm:block">Year</div>
-            <div className="col-span-1">School</div>
-            <div className="col-span-1">Actions</div>
+        <>
+          {/* ── MOBILE: Card layout ── */}
+          <div className="flex flex-col gap-3 sm:hidden">
+            {filtered.map(user => (
+              <div
+                key={user.id}
+                className="rounded-2xl border p-4"
+                style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}
+              >
+                {/* Top row — avatar + name + badges */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 font-bold text-sm ${
+                      user.school === 'ISAP' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                    }`}>
+                      {user.name?.charAt(0)?.toUpperCase() || '?'}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="text-sm font-bold truncate" style={{ color: 'var(--text)' }}>
+                          {user.name}
+                        </p>
+                        {user.role === 'admin' && (
+                          <ShieldCheck size={13} className="text-slate-400 shrink-0" />
+                        )}
+                      </div>
+                      <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-faint)' }}>
+                        {user.email}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* School badge */}
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full shrink-0 ${
+                    user.school === 'ISAP' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                  }`}>
+                    {user.school}
+                  </span>
+                </div>
+
+                {/* Info row */}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {user.student_id && (
+                    <span
+                      className="text-xs font-mono font-semibold px-2.5 py-1 rounded-lg"
+                      style={{ backgroundColor: 'var(--bg)', color: 'var(--text)' }}
+                    >
+                      {user.student_id}
+                    </span>
+                  )}
+                  {user.year_level && (
+                    <span
+                      className="text-xs font-semibold px-2.5 py-1 rounded-lg"
+                      style={{ backgroundColor: 'var(--bg)', color: 'var(--text-muted)' }}
+                    >
+                      {user.year_level}
+                    </span>
+                  )}
+                  {user.role === 'admin' && (
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600">
+                      Admin
+                    </span>
+                  )}
+                </div>
+
+                {/* Course */}
+                {user.course && (
+                  <p className="text-xs mt-2 leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                    {user.course}
+                  </p>
+                )}
+
+                {/* Actions */}
+                <div className="flex items-center gap-2 mt-3 pt-3" style={{ borderTop: '1px solid var(--border)' }}>
+                  <button
+                    onClick={() => handleEdit(user)}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-all"
+                    style={{ backgroundColor: 'var(--bg)', color: 'var(--text-muted)' }}
+                  >
+                    <Pencil size={13} />
+                    Edit
+                  </button>
+
+                  {deleteId === user.id ? (
+                    <div className="flex-1 flex items-center gap-2">
+                      <button
+                        onClick={() => handleDelete(user.id)}
+                        disabled={deleting}
+                        className="flex-1 py-2 rounded-xl text-xs font-bold bg-red-600 text-white disabled:opacity-50"
+                      >
+                        {deleting ? '...' : 'Yes, delete'}
+                      </button>
+                      <button
+                        onClick={() => setDeleteId(null)}
+                        className="flex-1 py-2 rounded-xl text-xs font-bold border"
+                        style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setDeleteId(user.id)}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-all hover:bg-red-50 hover:text-red-600"
+                      style={{ backgroundColor: 'var(--bg)', color: 'var(--text-faint)' }}
+                    >
+                      <Trash2 size={13} />
+                      Delete
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
 
-          {/* Rows */}
-          {filtered.map((user, i) => (
-            <div
-              key={user.id}
-              className="grid grid-cols-12 gap-3 px-5 py-4 items-center transition-all hover:bg-black/5 dark:hover:bg-white/5"
-              style={{ borderBottom: i < filtered.length - 1 ? '1px solid var(--border)' : 'none' }}
-            >
-              {/* Name + email */}
-              <div className="col-span-4 flex items-center gap-3 min-w-0">
-                <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${
-                  user.school === 'ISAP' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
-                }`}>
-                  {user.name?.charAt(0)?.toUpperCase() || '?'}
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-sm font-semibold truncate" style={{ color: 'var(--text)' }}>{user.name}</p>
-                    {user.role === 'admin' && (
-                      <ShieldCheck size={12} className="text-slate-400 shrink-0" />
-                    )}
-                  </div>
-                  <p className="text-xs truncate" style={{ color: 'var(--text-faint)' }}>{user.email}</p>
-                </div>
-              </div>
-
-              {/* Student ID */}
-              <div className="col-span-2">
-                {user.student_id ? (
-                  <span className="text-xs font-mono font-semibold px-2 py-1 rounded-lg"
-                    style={{ backgroundColor: 'var(--bg)', color: 'var(--text)' }}>
-                    {user.student_id}
-                  </span>
-                ) : (
-                  <span className="text-xs" style={{ color: 'var(--text-faint)' }}>—</span>
-                )}
-              </div>
-
-              {/* Course */}
-              <div className="col-span-3 hidden sm:block">
-                <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
-                  {user.course || <span style={{ color: 'var(--text-faint)' }}>—</span>}
-                </p>
-              </div>
-
-              {/* Year */}
-              <div className="col-span-1 hidden sm:block">
-                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  {user.year_level?.replace(' Year', '') || '—'}
-                </p>
-              </div>
-
-              {/* School */}
-              <div className="col-span-1">
-                <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
-                  user.school === 'ISAP'
-                    ? 'bg-red-100 text-red-700'
-                    : 'bg-blue-100 text-blue-700'
-                }`}>
-                  {user.school}
-                </span>
-              </div>
-
-              {/* Actions */}
-              <div className="col-span-1 flex items-center gap-1">
-                <button
-                  onClick={() => handleEdit(user)}
-                  className="p-1.5 rounded-lg transition-all hover:bg-black/5 dark:hover:bg-white/10"
-                  style={{ color: 'var(--text-muted)' }}
-                  title="Edit user"
-                >
-                  <Pencil size={14} />
-                </button>
-
-                {deleteId === user.id ? (
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => handleDelete(user.id)}
-                      disabled={deleting}
-                      className="text-[10px] font-bold text-red-600 px-2 py-1 rounded-lg hover:bg-red-50 transition-all"
-                    >
-                      {deleting ? '...' : 'Yes'}
-                    </button>
-                    <button
-                      onClick={() => setDeleteId(null)}
-                      className="text-[10px] font-bold px-2 py-1 rounded-lg hover:bg-black/5 transition-all"
-                      style={{ color: 'var(--text-muted)' }}
-                    >
-                      No
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setDeleteId(user.id)}
-                    className="p-1.5 rounded-lg transition-all hover:bg-red-50 hover:text-red-500"
-                    style={{ color: 'var(--text-faint)' }}
-                    title="Delete user"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                )}
-              </div>
+          {/* ── DESKTOP: Table layout ── */}
+          <div className="hidden sm:block rounded-2xl border overflow-hidden" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+            {/* Table header */}
+            <div className="grid grid-cols-12 gap-3 px-5 py-3 text-xs font-bold uppercase tracking-widest"
+              style={{ backgroundColor: 'var(--bg)', color: 'var(--text-faint)', borderBottom: '1px solid var(--border)' }}>
+              <div className="col-span-4">Name</div>
+              <div className="col-span-2">Student ID</div>
+              <div className="col-span-3">Course</div>
+              <div className="col-span-1">Year</div>
+              <div className="col-span-1">School</div>
+              <div className="col-span-1">Actions</div>
             </div>
-          ))}
-        </div>
+
+            {filtered.map((user, i) => (
+              <div
+                key={user.id}
+                className="grid grid-cols-12 gap-3 px-5 py-4 items-center transition-all hover:bg-black/5 dark:hover:bg-white/5"
+                style={{ borderBottom: i < filtered.length - 1 ? '1px solid var(--border)' : 'none' }}
+              >
+                {/* Name + email */}
+                <div className="col-span-4 flex items-center gap-3 min-w-0">
+                  <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${
+                    user.school === 'ISAP' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                  }`}>
+                    {user.name?.charAt(0)?.toUpperCase() || '?'}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-semibold truncate" style={{ color: 'var(--text)' }}>{user.name}</p>
+                      {user.role === 'admin' && <ShieldCheck size={12} className="text-slate-400 shrink-0" />}
+                    </div>
+                    <p className="text-xs truncate" style={{ color: 'var(--text-faint)' }}>{user.email}</p>
+                  </div>
+                </div>
+
+                {/* Student ID */}
+                <div className="col-span-2">
+                  {user.student_id ? (
+                    <span className="text-xs font-mono font-semibold px-2 py-1 rounded-lg"
+                      style={{ backgroundColor: 'var(--bg)', color: 'var(--text)' }}>
+                      {user.student_id}
+                    </span>
+                  ) : (
+                    <span className="text-xs" style={{ color: 'var(--text-faint)' }}>—</span>
+                  )}
+                </div>
+
+                {/* Course */}
+                <div className="col-span-3">
+                  <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
+                    {user.course || '—'}
+                  </p>
+                </div>
+
+                {/* Year */}
+                <div className="col-span-1">
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    {user.year_level?.replace(' Year', '') || '—'}
+                  </p>
+                </div>
+
+                {/* School */}
+                <div className="col-span-1">
+                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
+                    user.school === 'ISAP' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                  }`}>
+                    {user.school}
+                  </span>
+                </div>
+
+                {/* Actions */}
+                <div className="col-span-1 flex items-center gap-1">
+                  <button
+                    onClick={() => handleEdit(user)}
+                    className="p-1.5 rounded-lg transition-all hover:bg-black/5 dark:hover:bg-white/10"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    <Pencil size={14} />
+                  </button>
+
+                  {deleteId === user.id ? (
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleDelete(user.id)}
+                        disabled={deleting}
+                        className="text-[10px] font-bold text-red-600 px-2 py-1 rounded-lg hover:bg-red-50"
+                      >
+                        {deleting ? '...' : 'Yes'}
+                      </button>
+                      <button
+                        onClick={() => setDeleteId(null)}
+                        className="text-[10px] font-bold px-2 py-1 rounded-lg"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
+                        No
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setDeleteId(user.id)}
+                      className="p-1.5 rounded-lg transition-all hover:bg-red-50 hover:text-red-500"
+                      style={{ color: 'var(--text-faint)' }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   )
