@@ -118,7 +118,7 @@ export default function IDCardPage() {
       const savedUrl = new URL(`https://campus-helpdesk-phi.vercel.app/login?student_id=${encodeURIComponent(profile.student_id)}`)
 
       // Extract pwd from saved qr_data if exists
-      let loginUrl = `https://campus-helpdesk-phi.vercel.app/login?student_id=${encodeURIComponent(profile.student_id)}`
+      const loginUrl = `https://campus-helpdesk-phi.vercel.app/login?student_id=${encodeURIComponent(profile.student_id)}`
       if (profile.qr_data) {
         try {
           // Parse the URL from the saved QR data to get the pwd
