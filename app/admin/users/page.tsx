@@ -27,9 +27,22 @@ type Course = {
 
 const yearOptions = ['1st Year', '2nd Year', '3rd Year', '4th Year']
 
+const officeOptions = [
+  { value: 'Registrar', label: '📋 Registrar' },
+  { value: 'Finance / Cashier', label: '💰 Finance / Cashier' },
+  { value: 'Office of Student Services', label: '🎓 Office of Student Services' },
+  { value: 'Office of Guidance Services', label: '🤝 Office of Guidance Services' },
+  { value: 'CITE - College of Information Technology', label: '💻 CITE' },
+  { value: 'CASTE - College of Arts Sciences and Teacher Education', label: '📚 CASTE' },
+  { value: 'Office of the Dean', label: '🏛️ Office of the Dean' },
+  { value: 'Library', label: '📖 Library' },
+  { value: 'IT Department', label: '🖥️ IT Department' },
+  { value: 'General Administration', label: '⚙️ General Administration' },
+]
+
 const emptyForm = {
   name: '', email: '', password: '', role: 'student',
-  school: 'ISAP', student_id: '', course: '', year_level: '1st Year'
+  school: 'ISAP', student_id: '', course: '', year_level: '1st Year', office: ''
 }
 
 export default function AdminUsersPage() {
@@ -119,9 +132,10 @@ export default function AdminUsersPage() {
             name: form.name.trim(),
             school: form.school,
             student_id: form.student_id.trim() || null,
-            course: form.course.trim() || null,
-            year_level: form.year_level,
+            course: form.role === 'student' ? form.course.trim() || null : null,
+            year_level: form.role === 'student' ? form.year_level : null,
             role: form.role,
+            ...(form.role === 'admin' ? { office: form.office } : {}),
           })
           .eq('id', editUser.id)
 
@@ -139,8 +153,9 @@ export default function AdminUsersPage() {
             role: form.role,
             school: form.school,
             student_id: form.student_id.trim() || null,
-            course: form.course.trim() || null,
-            year_level: form.year_level,
+            course: form.role === 'student' ? form.course.trim() || null : null,
+            year_level: form.role === 'student' ? form.year_level : null,
+            office: form.role === 'admin' ? form.office : null,
           })
         })
         const result = await res.json()
@@ -171,6 +186,7 @@ export default function AdminUsersPage() {
       student_id: user.student_id || '',
       course: user.course || '',
       year_level: user.year_level || '1st Year',
+      office: (user as unknown as { office?: string }).office || '',
     })
     setError('')
     setShowForm(true)
@@ -343,98 +359,128 @@ export default function AdminUsersPage() {
             <div>
               <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>School</label>
               <div className="flex gap-2">
-                {(['ISAP', 'MCNP'] as const).map(s => (
-                  <button key={s} type="button"
-                    onClick={() => setForm({ ...form, school: s, course: '' })}
+                {(form.role === 'admin'
+                  ? [
+                      { value: 'ISAP', label: 'ISAP', active: '#dc2626', activeBg: '#fee2e2', activeText: '#b91c1c' },
+                      { value: 'MCNP', label: 'MCNP', active: '#2563eb', activeBg: '#dbeafe', activeText: '#1d4ed8' },
+                      { value: 'BOTH', label: 'Both', active: '#1e293b', activeBg: '#f1f5f9', activeText: '#1e293b' },
+                    ]
+                  : [
+                      { value: 'ISAP', label: 'ISAP', active: '#dc2626', activeBg: '#fee2e2', activeText: '#b91c1c' },
+                      { value: 'MCNP', label: 'MCNP', active: '#2563eb', activeBg: '#dbeafe', activeText: '#1d4ed8' },
+                    ]
+                ).map(s => (
+                  <button key={s.value} type="button"
+                    onClick={() => setForm({ ...form, school: s.value, course: '' })}
                     className="flex-1 py-2.5 rounded-xl border-2 text-xs font-bold transition-all"
                     style={{
-                      borderColor: form.school === s ? (s === 'ISAP' ? '#dc2626' : '#2563eb') : 'var(--border)',
-                      backgroundColor: form.school === s ? (s === 'ISAP' ? '#fee2e2' : '#dbeafe') : 'var(--bg)',
-                      color: form.school === s ? (s === 'ISAP' ? '#b91c1c' : '#1d4ed8') : 'var(--text-muted)',
+                      borderColor: form.school === s.value ? s.active : 'var(--border)',
+                      backgroundColor: form.school === s.value ? s.activeBg : 'var(--bg)',
+                      color: form.school === s.value ? s.activeText : 'var(--text-muted)',
                     }}>
-                    {s}
+                    {s.label}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Student ID */}
+            {/* ID Field — Student ID or Admin ID */}
             <div>
-              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Student ID</label>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>
+                {form.role === 'admin' ? 'Admin ID' : 'Student ID'}
+              </label>
               <input
                 value={form.student_id}
                 onChange={e => setForm({ ...form, student_id: e.target.value })}
-                placeholder="e.g. 2024-0001"
+                placeholder={form.role === 'admin' ? 'e.g. ADMIN-001' : 'e.g. 2024-0001'}
                 className="w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none font-mono"
                 style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
               />
             </div>
 
-            {/* Course */}
-            <div className="relative">
-              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Course</label>
-              <button
-                type="button"
-                onClick={() => setShowCourseDropdown(!showCourseDropdown)}
-                className="w-full rounded-xl border px-4 py-2.5 text-sm text-left flex items-center justify-between focus:outline-none"
-                style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: form.course ? 'var(--text)' : 'var(--text-faint)' }}
-              >
-                <span className="truncate">{form.course || 'Select course...'}</span>
-                <ChevronDown size={15} style={{ color: 'var(--text-faint)' }} />
-              </button>
-              {showCourseDropdown && (
-                <div className="absolute z-20 top-full left-0 right-0 mt-1 rounded-xl border shadow-xl overflow-hidden"
-                  style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
-                  <div className="max-h-48 overflow-y-auto">
-                    <button
-                      type="button"
-                      onClick={() => { setForm({ ...form, course: '' }); setShowCourseDropdown(false) }}
-                      className="w-full text-left px-4 py-2.5 text-xs hover:bg-black/5 dark:hover:bg-white/5"
-                      style={{ color: 'var(--text-muted)' }}
-                    >
-                      — None —
-                    </button>
-                    {formCourses.map(c => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => { setForm({ ...form, course: c.name }); setShowCourseDropdown(false) }}
+            {/* Course (students) OR Office/Department (admins) */}
+            {form.role === 'student' ? (
+              <div className="relative">
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Course</label>
+                <button
+                  type="button"
+                  onClick={() => setShowCourseDropdown(!showCourseDropdown)}
+                  className="w-full rounded-xl border px-4 py-2.5 text-sm text-left flex items-center justify-between focus:outline-none"
+                  style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: form.course ? 'var(--text)' : 'var(--text-faint)' }}
+                >
+                  <span className="truncate">{form.course || 'Select course...'}</span>
+                  <ChevronDown size={15} style={{ color: 'var(--text-faint)' }} />
+                </button>
+                {showCourseDropdown && (
+                  <div className="absolute z-20 top-full left-0 right-0 mt-1 rounded-xl border shadow-xl overflow-hidden"
+                    style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+                    <div className="max-h-48 overflow-y-auto">
+                      <button type="button"
+                        onClick={() => { setForm({ ...form, course: '' }); setShowCourseDropdown(false) }}
                         className="w-full text-left px-4 py-2.5 text-xs hover:bg-black/5 dark:hover:bg-white/5"
-                        style={{
-                          color: 'var(--text)',
-                          backgroundColor: form.course === c.name ? 'rgba(0,0,0,0.05)' : undefined,
-                          fontWeight: form.course === c.name ? 600 : undefined,
-                        }}
-                      >
-                        {c.name}
+                        style={{ color: 'var(--text-muted)' }}>
+                        — None —
                       </button>
-                    ))}
-                    {formCourses.length === 0 && (
-                      <p className="px-4 py-3 text-xs" style={{ color: 'var(--text-faint)' }}>No courses for {form.school}</p>
-                    )}
+                      {formCourses.map(c => (
+                        <button key={c.id} type="button"
+                          onClick={() => { setForm({ ...form, course: c.name }); setShowCourseDropdown(false) }}
+                          className="w-full text-left px-4 py-2.5 text-xs hover:bg-black/5 dark:hover:bg-white/5"
+                          style={{
+                            color: 'var(--text)',
+                            backgroundColor: form.course === c.name ? 'rgba(0,0,0,0.05)' : undefined,
+                            fontWeight: form.course === c.name ? 600 : undefined,
+                          }}>
+                          {c.name}
+                        </button>
+                      ))}
+                      {formCourses.length === 0 && (
+                        <p className="px-4 py-3 text-xs" style={{ color: 'var(--text-faint)' }}>No courses for {form.school}</p>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-
-            {/* Year Level */}
-            <div>
-              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Year Level</label>
-              <div className="grid grid-cols-4 gap-1.5">
-                {yearOptions.map(y => (
-                  <button key={y} type="button" onClick={() => setForm({ ...form, year_level: y })}
-                    className="py-2 rounded-xl border-2 text-xs font-semibold transition-all"
-                    style={{
-                      borderColor: form.year_level === y ? '#1e293b' : 'var(--border)',
-                      backgroundColor: form.year_level === y ? '#1e293b' : 'var(--bg)',
-                      color: form.year_level === y ? '#ffffff' : 'var(--text-muted)',
-                    }}>
-                    {y.replace(' Year', '')}
-                  </button>
-                ))}
+                )}
               </div>
-            </div>
-          </div>
+            ) : (
+              <div>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>
+                  Office / Department
+                </label>
+                <div className="grid grid-cols-1 gap-1.5">
+                  {officeOptions.map(o => (
+                    <button key={o.value} type="button"
+                      onClick={() => setForm({ ...form, office: o.value })}
+                      className="w-full text-left px-4 py-2.5 rounded-xl border-2 text-xs font-semibold transition-all"
+                      style={{
+                        borderColor: form.office === o.value ? '#1e293b' : 'var(--border)',
+                        backgroundColor: form.office === o.value ? '#1e293b' : 'var(--bg)',
+                        color: form.office === o.value ? '#ffffff' : 'var(--text-muted)',
+                      }}>
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Year Level — students only */}
+            {form.role === 'student' && (
+              <div>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Year Level</label>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {yearOptions.map(y => (
+                    <button key={y} type="button" onClick={() => setForm({ ...form, year_level: y })}
+                      className="py-2 rounded-xl border-2 text-xs font-semibold transition-all"
+                      style={{
+                        borderColor: form.year_level === y ? '#1e293b' : 'var(--border)',
+                        backgroundColor: form.year_level === y ? '#1e293b' : 'var(--bg)',
+                        color: form.year_level === y ? '#ffffff' : 'var(--text-muted)',
+                      }}>
+                      {y.replace(' Year', '')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
           {error && (
             <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3">
