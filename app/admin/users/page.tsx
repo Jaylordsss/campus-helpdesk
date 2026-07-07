@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/src/lib/supabase/client'
 import {
-  Plus, Pencil, Trash2, Search, GraduationCap,
-  ShieldCheck, ChevronDown, X, Check, Eye, EyeOff
+  Plus, Pencil, Trash2, Search, ShieldCheck,
+  ChevronDown, X, Check, Eye, EyeOff
 } from 'lucide-react'
 
 type User = {
@@ -16,6 +16,7 @@ type User = {
   student_id: string | null
   course: string | null
   year_level: string | null
+  office?: string | null
   created_at: string
 }
 
@@ -89,21 +90,15 @@ export default function AdminUsersPage() {
     fetchCourses()
   }, [])
 
-  // Filtered courses based on selected school in form
   const formCourses = courses.filter(c => c.school === form.school)
+  const filterCourses = schoolFilter === 'ALL' ? courses : courses.filter(c => c.school === schoolFilter)
 
-  // Filtered courses for the course filter dropdown
-  const filterCourses = schoolFilter === 'ALL'
-    ? courses
-    : courses.filter(c => c.school === schoolFilter)
-
-  // Apply all filters
   const filtered = users.filter(u => {
     const matchSearch = !search ||
       u.name?.toLowerCase().includes(search.toLowerCase()) ||
       u.email?.toLowerCase().includes(search.toLowerCase()) ||
       u.student_id?.toLowerCase().includes(search.toLowerCase())
-    const matchSchool = schoolFilter === 'ALL' || u.school === schoolFilter
+    const matchSchool = schoolFilter === 'ALL' || u.school === schoolFilter || u.school === 'BOTH'
     const matchCourse = courseFilter === 'ALL' || u.course === courseFilter
     const matchYear = yearFilter === 'ALL' || u.year_level === yearFilter
     const matchRole = roleFilter === 'ALL' || u.role === roleFilter
@@ -111,38 +106,34 @@ export default function AdminUsersPage() {
   })
 
   const handleSave = async () => {
-    if (!form.name.trim() || !form.email.trim()) {
-      setError('Name and email are required')
-      return
-    }
-    if (!editUser && !form.password.trim()) {
-      setError('Password is required for new accounts')
-      return
-    }
+    if (!form.name.trim() || !form.email.trim()) { setError('Name and email are required'); return }
+    if (!editUser && !form.password.trim()) { setError('Password is required for new accounts'); return }
+    if (form.role === 'admin' && !form.office) { setError('Please select an office or department'); return }
     setSaving(true)
     setError('')
 
     try {
       if (editUser) {
-        // Update existing user
         const supabase = createClient()
-        const { error: updateError } = await supabase
-          .from('profiles')
-          .update({
-            name: form.name.trim(),
-            school: form.school,
-            student_id: form.student_id.trim() || null,
-            course: form.role === 'student' ? form.course.trim() || null : null,
-            year_level: form.role === 'student' ? form.year_level : null,
-            role: form.role,
-            ...(form.role === 'admin' ? { office: form.office } : {}),
-          })
-          .eq('id', editUser.id)
-
+        const updateData: Record<string, unknown> = {
+          name: form.name.trim(),
+          school: form.school,
+          student_id: form.student_id.trim() || null,
+          role: form.role,
+        }
+        if (form.role === 'student') {
+          updateData.course = form.course.trim() || null
+          updateData.year_level = form.year_level
+          updateData.office = null
+        } else {
+          updateData.office = form.office
+          updateData.course = null
+          updateData.year_level = null
+        }
+        const { error: updateError } = await supabase.from('profiles').update(updateData).eq('id', editUser.id)
         if (updateError) throw updateError
         setSuccess('User updated successfully!')
       } else {
-        // Create new user
         const res = await fetch('/api/admin/create-user', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -162,7 +153,6 @@ export default function AdminUsersPage() {
         if (result.error) throw new Error(result.error)
         setSuccess('Account created successfully!')
       }
-
       setTimeout(() => setSuccess(''), 3000)
       setShowForm(false)
       setEditUser(null)
@@ -186,7 +176,7 @@ export default function AdminUsersPage() {
       student_id: user.student_id || '',
       course: user.course || '',
       year_level: user.year_level || '1st Year',
-      office: (user as unknown as { office?: string }).office || '',
+      office: user.office || '',
     })
     setError('')
     setShowForm(true)
@@ -223,7 +213,6 @@ export default function AdminUsersPage() {
   }
 
   const hasFilters = search || schoolFilter !== 'ALL' || courseFilter !== 'ALL' || yearFilter !== 'ALL' || roleFilter !== 'ALL'
-
   const adminCount = users.filter(u => u.role === 'admin').length
   const studentCount = users.filter(u => u.role === 'student').length
   const isapCount = users.filter(u => u.school === 'ISAP').length
@@ -236,9 +225,7 @@ export default function AdminUsersPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold" style={{ color: 'var(--text)' }}>Users</h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-            Manage student and admin accounts
-          </p>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Manage student and admin accounts</p>
         </div>
         <button
           onClick={() => { setShowForm(true); setEditUser(null); setForm(emptyForm); setError('') }}
@@ -252,13 +239,13 @@ export default function AdminUsersPage() {
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: 'Total Users', value: users.length, color: 'text-slate-700' },
-          { label: 'Students', value: studentCount, color: 'text-slate-700' },
-          { label: 'ISAP', value: isapCount, color: 'text-red-600' },
-          { label: 'MCNP', value: mcnpCount, color: 'text-blue-600' },
+          { label: 'Total Users', value: users.length, color: 'var(--text)' },
+          { label: 'Students', value: studentCount, color: 'var(--text)' },
+          { label: 'ISAP', value: isapCount, color: '#dc2626' },
+          { label: 'MCNP', value: mcnpCount, color: '#2563eb' },
         ].map((s, i) => (
           <div key={i} className="rounded-2xl border p-4" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
-            <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+            <p className="text-2xl font-bold" style={{ color: s.color }}>{s.value}</p>
             <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{s.label}</p>
           </div>
         ))}
@@ -284,13 +271,13 @@ export default function AdminUsersPage() {
             <h2 className="text-sm font-bold" style={{ color: 'var(--text)' }}>
               {editUser ? 'Edit User' : 'Create New Account'}
             </h2>
-            <button onClick={() => { setShowForm(false); setEditUser(null); setError('') }}
-              style={{ color: 'var(--text-faint)' }}>
+            <button onClick={() => { setShowForm(false); setEditUser(null); setError('') }} style={{ color: 'var(--text-faint)' }}>
               <X size={18} />
             </button>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
             {/* Name */}
             <div>
               <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Full Name *</label>
@@ -316,7 +303,7 @@ export default function AdminUsersPage() {
               />
             </div>
 
-            {/* Password — only for create */}
+            {/* Password */}
             {!editUser && (
               <div>
                 <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Password *</label>
@@ -342,7 +329,8 @@ export default function AdminUsersPage() {
               <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Role</label>
               <div className="flex gap-2">
                 {(['student', 'admin'] as const).map(r => (
-                  <button key={r} type="button" onClick={() => setForm({ ...form, role: r })}
+                  <button key={r} type="button"
+                    onClick={() => setForm({ ...form, role: r, course: '', office: '', school: 'ISAP' })}
                     className="flex-1 py-2.5 rounded-xl border-2 text-xs font-bold capitalize transition-all"
                     style={{
                       borderColor: form.role === r ? '#1e293b' : 'var(--border)',
@@ -384,7 +372,7 @@ export default function AdminUsersPage() {
               </div>
             </div>
 
-            {/* ID Field — Student ID or Admin ID */}
+            {/* Admin ID or Student ID */}
             <div>
               <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>
                 {form.role === 'admin' ? 'Admin ID' : 'Student ID'}
@@ -398,7 +386,7 @@ export default function AdminUsersPage() {
               />
             </div>
 
-            {/* Course (students) OR Office/Department (admins) */}
+            {/* Course (students) or Office (admins) */}
             {form.role === 'student' ? (
               <div className="relative">
                 <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Course</label>
@@ -417,14 +405,14 @@ export default function AdminUsersPage() {
                     <div className="max-h-48 overflow-y-auto">
                       <button type="button"
                         onClick={() => { setForm({ ...form, course: '' }); setShowCourseDropdown(false) }}
-                        className="w-full text-left px-4 py-2.5 text-xs hover:bg-black/5 dark:hover:bg-white/5"
+                        className="w-full text-left px-4 py-2.5 text-xs hover:bg-black/5"
                         style={{ color: 'var(--text-muted)' }}>
                         — None —
                       </button>
                       {formCourses.map(c => (
                         <button key={c.id} type="button"
                           onClick={() => { setForm({ ...form, course: c.name }); setShowCourseDropdown(false) }}
-                          className="w-full text-left px-4 py-2.5 text-xs hover:bg-black/5 dark:hover:bg-white/5"
+                          className="w-full text-left px-4 py-2.5 text-xs hover:bg-black/5"
                           style={{
                             color: 'var(--text)',
                             backgroundColor: form.course === c.name ? 'rgba(0,0,0,0.05)' : undefined,
@@ -441,11 +429,11 @@ export default function AdminUsersPage() {
                 )}
               </div>
             ) : (
-              <div>
+              <div className="sm:col-span-2">
                 <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>
-                  Office / Department
+                  Office / Department *
                 </label>
-                <div className="grid grid-cols-1 gap-1.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {officeOptions.map(o => (
                     <button key={o.value} type="button"
                       onClick={() => setForm({ ...form, office: o.value })}
@@ -481,6 +469,7 @@ export default function AdminUsersPage() {
                 </div>
               </div>
             )}
+          </div>
 
           {error && (
             <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3">
@@ -494,7 +483,10 @@ export default function AdminUsersPage() {
               disabled={saving}
               className="flex items-center gap-2 px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-semibold rounded-xl disabled:opacity-50 transition-all"
             >
-              {saving ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Check size={15} />}
+              {saving
+                ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                : <Check size={15} />
+              }
               {saving ? 'Saving...' : editUser ? 'Save Changes' : 'Create Account'}
             </button>
             <button
@@ -510,8 +502,6 @@ export default function AdminUsersPage() {
 
       {/* Filters */}
       <div className="rounded-2xl border p-4 space-y-3" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
-
-        {/* Search */}
         <div className="relative">
           <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-faint)' }} />
           <input
@@ -523,9 +513,7 @@ export default function AdminUsersPage() {
           />
         </div>
 
-        {/* Filter row */}
         <div className="flex flex-wrap gap-2">
-
           {/* Role filter */}
           <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--border)' }}>
             {(['ALL', 'student', 'admin'] as const).map(r => (
@@ -549,7 +537,7 @@ export default function AdminUsersPage() {
                   backgroundColor: schoolFilter === s
                     ? s === 'ISAP' ? '#b91c1c' : s === 'MCNP' ? '#1d4ed8' : '#1e293b'
                     : 'var(--bg)',
-                  color: schoolFilter === s ? '#ffffff' : 'var(--text-muted)',
+                  color: schoolFilter === s ? '#fff' : 'var(--text-muted)',
                 }}>
                 {s === 'ALL' ? 'All Schools' : s}
               </button>
@@ -580,7 +568,6 @@ export default function AdminUsersPage() {
             {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
 
-          {/* Reset */}
           {hasFilters && (
             <button onClick={resetFilters}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all hover:bg-red-50 hover:text-red-600 hover:border-red-200"
@@ -591,7 +578,6 @@ export default function AdminUsersPage() {
           )}
         </div>
 
-        {/* Result count */}
         <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
           Showing <span className="font-bold" style={{ color: 'var(--text)' }}>{filtered.length}</span> of {users.length} users
           {hasFilters && ' (filtered)'}
@@ -610,113 +596,86 @@ export default function AdminUsersPage() {
         </div>
       ) : (
         <>
-          {/* ── MOBILE: Card layout ── */}
+          {/* ── MOBILE: Cards ── */}
           <div className="flex flex-col gap-3 sm:hidden">
             {filtered.map(user => (
-              <div
-                key={user.id}
-                className="rounded-2xl border p-4"
-                style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}
-              >
-                {/* Top row — avatar + name + badges */}
+              <div key={user.id} className="rounded-2xl border p-4"
+                style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 font-bold text-sm ${
-                      user.school === 'ISAP' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                      user.school === 'ISAP' ? 'bg-red-100 text-red-700'
+                      : user.school === 'MCNP' ? 'bg-blue-100 text-blue-700'
+                      : 'bg-slate-100 text-slate-700'
                     }`}>
                       {user.name?.charAt(0)?.toUpperCase() || '?'}
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <p className="text-sm font-bold truncate" style={{ color: 'var(--text)' }}>
-                          {user.name}
-                        </p>
-                        {user.role === 'admin' && (
-                          <ShieldCheck size={13} className="text-slate-400 shrink-0" />
-                        )}
+                        <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>{user.name}</p>
+                        {user.role === 'admin' && <ShieldCheck size={13} className="text-slate-400 shrink-0" />}
                       </div>
-                      <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-faint)' }}>
-                        {user.email}
-                      </p>
+                      <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-faint)' }}>{user.email}</p>
                     </div>
                   </div>
-
-                  {/* School badge */}
                   <span className={`text-xs font-bold px-2.5 py-1 rounded-full shrink-0 ${
-                    user.school === 'ISAP' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                    user.school === 'ISAP' ? 'bg-red-100 text-red-700'
+                    : user.school === 'MCNP' ? 'bg-blue-100 text-blue-700'
+                    : 'bg-slate-100 text-slate-600'
                   }`}>
                     {user.school}
                   </span>
                 </div>
 
-                {/* Info row */}
                 <div className="mt-3 flex flex-wrap gap-2">
                   {user.student_id && (
-                    <span
-                      className="text-xs font-mono font-semibold px-2.5 py-1 rounded-lg"
-                      style={{ backgroundColor: 'var(--bg)', color: 'var(--text)' }}
-                    >
+                    <span className="text-xs font-mono font-semibold px-2.5 py-1 rounded-lg"
+                      style={{ backgroundColor: 'var(--bg)', color: 'var(--text)' }}>
                       {user.student_id}
                     </span>
                   )}
                   {user.year_level && (
-                    <span
-                      className="text-xs font-semibold px-2.5 py-1 rounded-lg"
-                      style={{ backgroundColor: 'var(--bg)', color: 'var(--text-muted)' }}
-                    >
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-lg"
+                      style={{ backgroundColor: 'var(--bg)', color: 'var(--text-muted)' }}>
                       {user.year_level}
                     </span>
                   )}
                   {user.role === 'admin' && (
-                    <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600">
-                      Admin
-                    </span>
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600">Admin</span>
                   )}
                 </div>
 
-                {/* Course */}
                 {user.course && (
-                  <p className="text-xs mt-2 leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-                    {user.course}
-                  </p>
+                  <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>{user.course}</p>
+                )}
+                {user.office && (
+                  <p className="text-xs mt-2 font-semibold" style={{ color: 'var(--text-muted)' }}>🏢 {user.office}</p>
                 )}
 
-                {/* Actions */}
                 <div className="flex items-center gap-2 mt-3 pt-3" style={{ borderTop: '1px solid var(--border)' }}>
-                  <button
-                    onClick={() => handleEdit(user)}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-all"
-                    style={{ backgroundColor: 'var(--bg)', color: 'var(--text-muted)' }}
-                  >
-                    <Pencil size={13} />
-                    Edit
+                  <button onClick={() => handleEdit(user)}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold"
+                    style={{ backgroundColor: 'var(--bg)', color: 'var(--text-muted)' }}>
+                    <Pencil size={13} />Edit
                   </button>
 
                   {deleteId === user.id ? (
                     <div className="flex-1 flex items-center gap-2">
-                      <button
-                        onClick={() => handleDelete(user.id)}
-                        disabled={deleting}
-                        className="flex-1 py-2 rounded-xl text-xs font-bold bg-red-600 text-white disabled:opacity-50"
-                      >
+                      <button onClick={() => handleDelete(user.id)} disabled={deleting}
+                        className="flex-1 py-2 rounded-xl text-xs font-bold bg-red-600 text-white disabled:opacity-50">
                         {deleting ? '...' : 'Yes, delete'}
                       </button>
-                      <button
-                        onClick={() => setDeleteId(null)}
+                      <button onClick={() => setDeleteId(null)}
                         className="flex-1 py-2 rounded-xl text-xs font-bold border"
-                        style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
-                      >
+                        style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
                         Cancel
                       </button>
                     </div>
                   ) : (
-                    <button
-                      onClick={() => setDeleteId(user.id)}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-all hover:bg-red-50 hover:text-red-600"
-                      style={{ backgroundColor: 'var(--bg)', color: 'var(--text-faint)' }}
-                    >
-                      <Trash2 size={13} />
-                      Delete
+                    <button onClick={() => setDeleteId(user.id)}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold hover:bg-red-50 hover:text-red-600"
+                      style={{ backgroundColor: 'var(--bg)', color: 'var(--text-faint)' }}>
+                      <Trash2 size={13} />Delete
                     </button>
                   )}
                 </div>
@@ -724,29 +683,29 @@ export default function AdminUsersPage() {
             ))}
           </div>
 
-          {/* ── DESKTOP: Table layout ── */}
-          <div className="hidden sm:block rounded-2xl border overflow-hidden" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
-            {/* Table header */}
+          {/* ── DESKTOP: Table ── */}
+          <div className="hidden sm:block rounded-2xl border overflow-hidden"
+            style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
             <div className="grid grid-cols-12 gap-3 px-5 py-3 text-xs font-bold uppercase tracking-widest"
               style={{ backgroundColor: 'var(--bg)', color: 'var(--text-faint)', borderBottom: '1px solid var(--border)' }}>
               <div className="col-span-4">Name</div>
-              <div className="col-span-2">Student ID</div>
-              <div className="col-span-3">Course</div>
+              <div className="col-span-2">ID</div>
+              <div className="col-span-3">Course / Office</div>
               <div className="col-span-1">Year</div>
               <div className="col-span-1">School</div>
               <div className="col-span-1">Actions</div>
             </div>
 
             {filtered.map((user, i) => (
-              <div
-                key={user.id}
+              <div key={user.id}
                 className="grid grid-cols-12 gap-3 px-5 py-4 items-center transition-all hover:bg-black/5 dark:hover:bg-white/5"
-                style={{ borderBottom: i < filtered.length - 1 ? '1px solid var(--border)' : 'none' }}
-              >
-                {/* Name + email */}
+                style={{ borderBottom: i < filtered.length - 1 ? '1px solid var(--border)' : 'none' }}>
+
                 <div className="col-span-4 flex items-center gap-3 min-w-0">
                   <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${
-                    user.school === 'ISAP' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                    user.school === 'ISAP' ? 'bg-red-100 text-red-700'
+                    : user.school === 'MCNP' ? 'bg-blue-100 text-blue-700'
+                    : 'bg-slate-100 text-slate-700'
                   }`}>
                     {user.name?.charAt(0)?.toUpperCase() || '?'}
                   </div>
@@ -759,7 +718,6 @@ export default function AdminUsersPage() {
                   </div>
                 </div>
 
-                {/* Student ID */}
                 <div className="col-span-2">
                   {user.student_id ? (
                     <span className="text-xs font-mono font-semibold px-2 py-1 rounded-lg"
@@ -771,62 +729,51 @@ export default function AdminUsersPage() {
                   )}
                 </div>
 
-                {/* Course */}
                 <div className="col-span-3">
                   <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
-                    {user.course || '—'}
+                    {user.office || user.course || '—'}
                   </p>
                 </div>
 
-                {/* Year */}
                 <div className="col-span-1">
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
                     {user.year_level?.replace(' Year', '') || '—'}
                   </p>
                 </div>
 
-                {/* School */}
                 <div className="col-span-1">
                   <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
-                    user.school === 'ISAP' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                    user.school === 'ISAP' ? 'bg-red-100 text-red-700'
+                    : user.school === 'MCNP' ? 'bg-blue-100 text-blue-700'
+                    : 'bg-slate-100 text-slate-600'
                   }`}>
                     {user.school}
                   </span>
                 </div>
 
-                {/* Actions */}
                 <div className="col-span-1 flex items-center gap-1">
-                  <button
-                    onClick={() => handleEdit(user)}
-                    className="p-1.5 rounded-lg transition-all hover:bg-black/5 dark:hover:bg-white/10"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
+                  <button onClick={() => handleEdit(user)}
+                    className="p-1.5 rounded-lg transition-all hover:bg-black/5"
+                    style={{ color: 'var(--text-muted)' }}>
                     <Pencil size={14} />
                   </button>
 
                   {deleteId === user.id ? (
                     <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleDelete(user.id)}
-                        disabled={deleting}
-                        className="text-[10px] font-bold text-red-600 px-2 py-1 rounded-lg hover:bg-red-50"
-                      >
+                      <button onClick={() => handleDelete(user.id)} disabled={deleting}
+                        className="text-[10px] font-bold text-red-600 px-2 py-1 rounded-lg hover:bg-red-50">
                         {deleting ? '...' : 'Yes'}
                       </button>
-                      <button
-                        onClick={() => setDeleteId(null)}
+                      <button onClick={() => setDeleteId(null)}
                         className="text-[10px] font-bold px-2 py-1 rounded-lg"
-                        style={{ color: 'var(--text-muted)' }}
-                      >
+                        style={{ color: 'var(--text-muted)' }}>
                         No
                       </button>
                     </div>
                   ) : (
-                    <button
-                      onClick={() => setDeleteId(user.id)}
+                    <button onClick={() => setDeleteId(user.id)}
                       className="p-1.5 rounded-lg transition-all hover:bg-red-50 hover:text-red-500"
-                      style={{ color: 'var(--text-faint)' }}
-                    >
+                      style={{ color: 'var(--text-faint)' }}>
                       <Trash2 size={14} />
                     </button>
                   )}
