@@ -17,6 +17,7 @@ type User = {
   course: string | null
   year_level: string | null
   office?: string | null
+  photo_url?: string | null
   created_at: string
 }
 
@@ -603,12 +604,15 @@ export default function AdminUsersPage() {
                 style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 font-bold text-sm ${
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 font-bold text-sm overflow-hidden ${
                       user.school === 'ISAP' ? 'bg-red-100 text-red-700'
                       : user.school === 'MCNP' ? 'bg-blue-100 text-blue-700'
                       : 'bg-slate-100 text-slate-700'
                     }`}>
-                      {user.name?.charAt(0)?.toUpperCase() || '?'}
+                      {user.photo_url
+                        ? <img src={user.photo_url} alt={user.name} className="w-full h-full object-cover" />
+                        : user.name?.charAt(0)?.toUpperCase() || '?'
+                      }
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
@@ -702,12 +706,15 @@ export default function AdminUsersPage() {
                 style={{ borderBottom: i < filtered.length - 1 ? '1px solid var(--border)' : 'none' }}>
 
                 <div className="col-span-4 flex items-center gap-3 min-w-0">
-                  <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${
+                  <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-xs font-bold overflow-hidden ${
                     user.school === 'ISAP' ? 'bg-red-100 text-red-700'
                     : user.school === 'MCNP' ? 'bg-blue-100 text-blue-700'
                     : 'bg-slate-100 text-slate-700'
                   }`}>
-                    {user.name?.charAt(0)?.toUpperCase() || '?'}
+                    {user.photo_url
+                      ? <img src={user.photo_url} alt={user.name} className="w-full h-full object-cover" />
+                      : user.name?.charAt(0)?.toUpperCase() || '?'
+                    }
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
