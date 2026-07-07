@@ -111,16 +111,16 @@ export default function AdminTuitionPage() {
     <div className="space-y-6">
 
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Tuition Fees</h1>
-          <p className="text-sm text-slate-400 mt-1">Manage fees per course, year level, and semester</p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--text)' }}>Tuition Fees</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Manage fees per course, year level, and semester</p>
         </div>
         <button
           onClick={() => { setShowForm(true); setEditId(null); setForm(emptyForm) }}
-          className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-semibold rounded-xl transition-all"
+          className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-xl transition-all shrink-0"
         >
-          <Plus size={16} />
+          <Plus size={14} />
           Add Fee
         </button>
       </div>
