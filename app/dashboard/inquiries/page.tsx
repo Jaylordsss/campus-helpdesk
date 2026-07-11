@@ -13,16 +13,13 @@ type Inquiry = {
   created_at: string
 }
 
-const CATEGORIES = [
-  { value: 'Registrar', label: 'Registrar', icon: '📋', desc: 'Enrollment, records, documents' },
-  { value: 'Finance', label: 'Finance / Cashier', icon: '💰', desc: 'Tuition fees, payments, scholarships' },
-  { value: 'Account', label: 'Account', icon: '👤', desc: 'Login issues, account problems' },
-  { value: 'Office of Student Services', label: 'Office of Student Services', icon: '🎓', desc: 'Student affairs and services' },
-  { value: 'Office of Guidance Services', label: 'Office of Guidance Services', icon: '🤝', desc: 'Counseling and guidance' },
-  { value: 'CITE', label: 'CITE - College of Information Technology', icon: '💻', desc: 'IT department concerns' },
-  { value: 'CASTE', label: 'CASTE - College of Arts, Sciences and Teacher Education', icon: '📚', desc: 'Arts and sciences department' },
-  { value: 'General', label: 'General', icon: '💬', desc: 'Other concerns' },
-]
+type CategoryOption = {
+  value: string
+  label: string
+  icon: string
+  desc: string
+  office_key: string | null
+}
 
 export default function InquiriesPage() {
   const [inquiries, setInquiries] = useState<Inquiry[]>([])
@@ -34,6 +31,7 @@ export default function InquiriesPage() {
   const [profile, setProfile] = useState<{ school: string; name: string } | null>(null)
   const [step, setStep] = useState<'category' | 'message'>('category')
   const [showCategorySheet, setShowCategorySheet] = useState(false)
+  const [categories, setCategories] = useState<CategoryOption[]>([])
 
   const isISAP = profile?.school === 'ISAP'
   const accentColor = isISAP ? '#dc2626' : '#2563eb'
@@ -51,6 +49,21 @@ export default function InquiriesPage() {
         .from('inquiries').select('*').eq('student_id', user.id)
         .order('created_at', { ascending: false })
       setInquiries(data || [])
+      // Load inquiry categories from DB
+      const { data: cats } = await supabase
+        .from('inquiry_categories')
+        .select('*')
+        .eq('is_active', true)
+        .order('sort_order')
+
+      setCategories((cats || []).map((c: { label: string; icon: string; description: string; office_key: string | null }) => ({
+        value: c.label,
+        label: c.label,
+        icon: c.icon,
+        desc: c.description || '',
+        office_key: c.office_key,
+      })))
+
       setLoading(false)
     }
     getData()
@@ -73,18 +86,8 @@ export default function InquiriesPage() {
       setCategory('')
       setStep('category')
 
-      const CATEGORY_TO_OFFICE: Record<string, string | null> = {
-        'Registrar': 'Registrar',
-        'Finance': 'Finance / Cashier',
-        'Account': null,
-        'Office of Student Services': 'Office of Student Services',
-        'Office of Guidance Services': 'Office of Guidance Services',
-        'CITE': 'CITE - College of Information Technology',
-        'CASTE': 'CASTE - College of Arts Sciences and Teacher Education',
-        'General': null,
-      }
-
-      const targetOffice = CATEGORY_TO_OFFICE[category]
+      const selectedCat = categories.find(c => c.value === category)
+      const targetOffice = selectedCat?.office_key || null
       const { data: allAdmins } = await supabase
         .from('profiles').select('id, office').eq('role', 'admin')
 
@@ -113,7 +116,7 @@ export default function InquiriesPage() {
     setSubmitting(false)
   }
 
-  const selectedCategory = CATEGORIES.find(c => c.value === category)
+  const selectedCategory = categories.find(c => c.value === category)
 
   if (loading) {
     return (
@@ -171,7 +174,7 @@ export default function InquiriesPage() {
                 Where do you want to send your inquiry?
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {CATEGORIES.map(cat => (
+                {categories.map(cat => (
                   <button
                     key={cat.value}
                     onClick={() => {
@@ -284,7 +287,7 @@ export default function InquiriesPage() {
           </div>
         ) : (
           inquiries.map(inquiry => {
-            const cat = CATEGORIES.find(c => c.value === inquiry.category)
+            const cat = categories.find(c => c.value === inquiry.category)
             return (
               <div key={inquiry.id} className="rounded-2xl border p-5" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
                 <div className="flex items-start justify-between gap-3 mb-3">
