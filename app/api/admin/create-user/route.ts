@@ -3,7 +3,8 @@ import { NextResponse } from 'next/server'
 
 export async function POST(request: Request) {
   try {
-    const { name, email, password, school, role, student_id, course, year_level } = await request.json()
+    const body = await request.json()
+    const { name, email, password, school, role, student_id, course, year_level, office } = body
 
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -27,8 +28,9 @@ export async function POST(request: Request) {
       role: role || 'student',
       school: school || 'ISAP',
       student_id: student_id || null,
-      course: course || null,
-      year_level: year_level || '1st Year',
+      course: role === 'admin' ? null : course || null,
+      year_level: role === 'admin' ? null : year_level || '1st Year',
+      office: role === 'admin' ? office || null : null,
     })
 
     if (profileError) {
