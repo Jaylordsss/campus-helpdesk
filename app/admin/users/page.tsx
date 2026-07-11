@@ -771,7 +771,7 @@ export default function AdminUsersPage() {
 
                 <div className="col-span-1">
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                    {user.year_level?.replace(' Year', '') || '—'}
+                    {user.role === 'admin' ? '—' : user.year_level?.replace(' Year', '') || '—'}
                   </p>
                 </div>
 
