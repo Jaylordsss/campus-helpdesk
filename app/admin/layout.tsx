@@ -25,7 +25,6 @@ const navItems = [
   { label: 'Inquiries', href: '/admin/inquiries', icon: MessageSquare },
   { label: 'Feedback', href: '/admin/feedback', icon: Star },
   { label: 'Analytics', href: '/admin/analytics', icon: TrendingUp },
-  { label: 'Inquiry Categories', href: '/admin/inquiry-categories', icon: MessageSquare },
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
