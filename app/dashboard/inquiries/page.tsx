@@ -73,24 +73,41 @@ export default function InquiriesPage() {
       setCategory('')
       setStep('category')
 
-      const { data: admins } = await supabase
-        .from('profiles').select('id').eq('role', 'admin')
-      if (admins) {
-        for (const admin of admins) {
-          await fetch('/api/notify', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: admin.id,
-              title: `New Inquiry — ${category}`,
-              message: message.trim().length > 80
-                ? message.trim().substring(0, 80) + '...'
-                : message.trim(),
-              type: 'inquiry',
-              link: '/admin/inquiries',
-            })
+      const CATEGORY_TO_OFFICE: Record<string, string | null> = {
+        'Registrar': 'Registrar',
+        'Finance': 'Finance / Cashier',
+        'Account': null,
+        'Office of Student Services': 'Office of Student Services',
+        'Office of Guidance Services': 'Office of Guidance Services',
+        'CITE': 'CITE - College of Information Technology',
+        'CASTE': 'CASTE - College of Arts Sciences and Teacher Education',
+        'General': null,
+      }
+
+      const targetOffice = CATEGORY_TO_OFFICE[category]
+      const { data: allAdmins } = await supabase
+        .from('profiles').select('id, office').eq('role', 'admin')
+
+      const relevantAdmins = (allAdmins || []).filter(admin =>
+        targetOffice
+          ? admin.office === targetOffice || !admin.office || admin.office === 'General Administration'
+          : !admin.office || admin.office === 'General Administration'
+      )
+
+      for (const admin of relevantAdmins) {
+        await fetch('/api/notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: admin.id,
+            title: `New Inquiry — ${category}`,
+            message: message.trim().length > 80
+              ? message.trim().substring(0, 80) + '...'
+              : message.trim(),
+            type: 'inquiry',
+            link: admin.office === targetOffice ? '/office-admin/inquiries' : '/admin/inquiries',
           })
-        }
+        })
       }
     }
     setSubmitting(false)
