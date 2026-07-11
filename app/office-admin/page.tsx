@@ -57,7 +57,7 @@ export default function OfficeAdminDashboard() {
         documents: docCount,
         resolved: (totalInq || 0) - (pendingInq || 0),
       })
-      setRecentInquiries((recent || []) as typeof recentInquiries)
+      setRecentInquiries((recent || []) as unknown as typeof recentInquiries)
       setLoading(false)
     }
     init()
