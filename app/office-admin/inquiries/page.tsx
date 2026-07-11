@@ -89,6 +89,32 @@ export default function OfficeInquiriesPage() {
           })
         })
       }
+
+      // Notify main admins that this office responded
+      const supabaseClient = createClient()
+      const { data: mainAdmins } = await supabaseClient
+        .from('profiles')
+        .select('id, office')
+        .eq('role', 'admin')
+
+      const mainAdminList = (mainAdmins || []).filter(a =>
+        !a.office || a.office === 'General Administration'
+      )
+
+      for (const mainAdmin of mainAdminList) {
+        await fetch('/api/notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: mainAdmin.id,
+            title: `✅ ${office} responded to an inquiry`,
+            message: `${adminName} from ${office} answered: "${response.trim().substring(0, 60)}${response.trim().length > 60 ? '...' : ''}"`,
+            type: 'inquiry',
+            link: '/admin/inquiries',
+          })
+        })
+      }
+
       setResponse('')
       setActiveId(null)
       await fetchInquiries(office)
