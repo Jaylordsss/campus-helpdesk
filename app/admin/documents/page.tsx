@@ -168,6 +168,38 @@ export default function AdminDocumentsPage() {
         })
       }
 
+      // Notify next office admin in the chain
+      const STEP_TO_OFFICE: Record<string, string> = {
+        'Library': 'Library',
+        'Guidance': 'Office of Guidance Services',
+        'Dean': 'Office of the Dean',
+        'Finance': 'Finance / Cashier',
+        'Registrar': 'Registrar',
+      }
+
+      const nextOffice = STEP_TO_OFFICE[req.current_step]
+      if (nextOffice && newStatus !== 'Claimed' && newStatus !== 'Rejected') {
+        const { data: officeAdmins } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('role', 'admin')
+          .eq('office', nextOffice)
+
+        for (const officeAdmin of (officeAdmins || [])) {
+          await fetch('/api/notify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: officeAdmin.id,
+              title: `📋 Document Needs Your Clearance`,
+              message: `${req.profiles?.name} needs ${req.current_step} clearance for ${req.document_type} (${req.reference_no}).`,
+              type: 'general',
+              link: '/office-admin/documents',
+            })
+          })
+        }
+      }
+
       setRemarks(prev => { const n = { ...prev }; delete n[req.id]; return n })
       setPickupDates(prev => { const n = { ...prev }; delete n[req.id]; return n })
       setExpandedId(null)
