@@ -1,48 +1,82 @@
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
-import { NextResponse, type NextRequest } from 'next/server'
 
 export async function proxy(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request })
+  const { pathname } = request.nextUrl
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() { return request.cookies.getAll() },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          supabaseResponse = NextResponse.next({ request })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          )
-        },
+        getAll: () => request.cookies.getAll(),
+        setAll: () => {},
       },
     }
   )
 
   const { data: { user } } = await supabase.auth.getUser()
-  const { pathname } = request.nextUrl
 
-  // Public routes — no auth needed
-  const publicRoutes = ['/visitor', '/login', '/signup', '/reset-password', '/api']
-  const isPublic = publicRoutes.some(r => pathname.startsWith(r))
-
-  // Protect dashboard and admin
-  if (!user && !isPublic && (pathname.startsWith('/dashboard') || pathname.startsWith('/admin'))) {
-    return NextResponse.redirect(new URL('/visitor', request.url))
+  // Public routes
+  const publicRoutes = ['/login', '/signup', '/visitor', '/reset-password', '/api']
+  if (publicRoutes.some(r => pathname.startsWith(r))) {
+    return NextResponse.next()
   }
 
-  // If logged in and tries to access login/signup → redirect to dashboard
-  if (user && (pathname === '/login' || pathname === '/signup')) {
+  // Not logged in → visitor
+  if (!user) {
+    if (pathname === '/') return NextResponse.redirect(new URL('/visitor', request.url))
+    return NextResponse.redirect(new URL('/login', request.url))
+  }
+
+  // Get profile
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role, office')
+    .eq('id', user.id)
+    .single()
+
+  const role = profile?.role
+  const office = profile?.office
+
+  // Root redirect
+  if (pathname === '/') {
+    if (role === 'admin') {
+      if (office && office !== 'General Administration') {
+        return NextResponse.redirect(new URL('/office-admin', request.url))
+      }
+      return NextResponse.redirect(new URL('/admin', request.url))
+    }
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 
-  return supabaseResponse
+  // Office admin trying to access main admin → redirect to office-admin
+  if (pathname.startsWith('/admin') && role === 'admin' && office && office !== 'General Administration') {
+    return NextResponse.redirect(new URL('/office-admin', request.url))
+  }
+
+  // Main admin trying to access office-admin → redirect to admin
+  if (pathname.startsWith('/office-admin') && role === 'admin' && (!office || office === 'General Administration')) {
+    return NextResponse.redirect(new URL('/admin', request.url))
+  }
+
+  // Student trying to access admin areas
+  if ((pathname.startsWith('/admin') || pathname.startsWith('/office-admin')) && role !== 'admin') {
+    return NextResponse.redirect(new URL('/dashboard', request.url))
+  }
+
+  // Student routes for non-students
+  if (pathname.startsWith('/dashboard') && role === 'admin') {
+    if (office && office !== 'General Administration') {
+      return NextResponse.redirect(new URL('/office-admin', request.url))
+    }
+    return NextResponse.redirect(new URL('/admin', request.url))
+  }
+
+  return NextResponse.next()
 }
 
 export const config = {
-  matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
-  ],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|icons|manifest.json|sw.js).*)'],
 }

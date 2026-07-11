@@ -242,8 +242,10 @@ export default function AdminUsersPage() {
         {[
           { label: 'Total Users', value: users.length, color: 'var(--text)' },
           { label: 'Students', value: studentCount, color: 'var(--text)' },
-          { label: 'ISAP', value: isapCount, color: '#dc2626' },
-          { label: 'MCNP', value: mcnpCount, color: '#2563eb' },
+          { label: 'Admins', value: adminCount, color: '#8b5cf6' },
+          { label: 'ISAP Users', value: isapCount, color: '#dc2626' },
+          { label: 'MCNP Users', value: mcnpCount, color: '#2563eb' },
+          { label: 'Both Schools', value: users.filter(u => u.school === 'BOTH').length, color: '#0891b2' },
         ].map((s, i) => (
           <div key={i} className="rounded-2xl border p-4" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
             <p className="text-2xl font-bold" style={{ color: s.color }}>{s.value}</p>
@@ -447,6 +449,31 @@ export default function AdminUsersPage() {
                       {o.label}
                     </button>
                   ))}
+                </div>
+
+                {/* Custom office input */}
+                <div className="mt-2">
+                  <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>
+                    Or type a custom office name
+                  </label>
+                  <input
+                    value={officeOptions.some(o => o.value === form.office) ? '' : form.office}
+                    onChange={e => setForm({ ...form, office: e.target.value })}
+                    placeholder="e.g. Office of the President, Clinic, NSTP Office..."
+                    className="w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none"
+                    style={{
+                      backgroundColor: 'var(--bg)',
+                      borderColor: form.office && !officeOptions.some(o => o.value === form.office)
+                        ? '#1e293b'
+                        : 'var(--border)',
+                      color: 'var(--text)',
+                    }}
+                  />
+                  {form.office && !officeOptions.some(o => o.value === form.office) && (
+                    <p className="text-xs mt-1 font-semibold" style={{ color: 'var(--text-muted)' }}>
+                      ✓ Custom office: <span style={{ color: 'var(--text)' }}>{form.office}</span>
+                    </p>
+                  )}
                 </div>
               </div>
             )}
