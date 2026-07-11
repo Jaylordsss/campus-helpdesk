@@ -544,14 +544,14 @@ export default function AdminUsersPage() {
         <div className="flex flex-wrap gap-2">
           {/* Role filter */}
           <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--border)' }}>
-            {(['ALL', 'student', 'admin'] as const).map(r => (
-              <button key={r} onClick={() => setRoleFilter(r)}
+            {(['student', 'admin'] as const).map(r => (
+              <button key={r} onClick={() => setRoleFilter(prev => prev === r ? 'ALL' : r)}
                 className="px-3 py-1.5 text-xs font-semibold capitalize transition-all"
                 style={{
                   backgroundColor: roleFilter === r ? '#1e293b' : 'var(--bg)',
                   color: roleFilter === r ? '#ffffff' : 'var(--text-muted)',
                 }}>
-                {r === 'ALL' ? 'All Roles' : r === 'admin' ? '🛡 Admin' : '👤 Student'}
+                {r === 'admin' ? '🛡 Admin' : '👤 Student'}
               </button>
             ))}
           </div>
@@ -721,8 +721,7 @@ export default function AdminUsersPage() {
               style={{ backgroundColor: 'var(--bg)', color: 'var(--text-faint)', borderBottom: '1px solid var(--border)' }}>
               <div className="col-span-4">Name</div>
               <div className="col-span-2">ID</div>
-              <div className="col-span-3">Course / Office</div>
-              <div className="col-span-1">Year</div>
+              <div className="col-span-4">Course / Office</div>
               <div className="col-span-1">School</div>
               <div className="col-span-1">Actions</div>
             </div>
@@ -763,16 +762,17 @@ export default function AdminUsersPage() {
                   )}
                 </div>
 
-                <div className="col-span-3">
-                  <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
-                    {user.office || user.course || '—'}
-                  </p>
-                </div>
-
-                <div className="col-span-1">
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                    {user.role === 'admin' ? '—' : user.year_level?.replace(' Year', '') || '—'}
-                  </p>
+                <div className="col-span-4">
+                  <div>
+                    <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
+                      {user.office || user.course || '—'}
+                    </p>
+                    {user.role === 'student' && user.year_level && (
+                      <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-faint)' }}>
+                        {user.year_level}
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 <div className="col-span-1">
