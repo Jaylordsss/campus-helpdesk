@@ -1,378 +1,432 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/src/lib/supabase/client'
-import { Plus, Pencil, Trash2, X, Check, MapPin, Navigation } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, Check, MapPin, Upload, Image, Loader2 } from 'lucide-react'
 
 type Location = {
   id: string
   office_name: string
   building: string
   room: string
-  latitude: number
-  longitude: number
+  latitude: number | null
+  longitude: number | null
   school: string
+  photo_url: string | null
+  description: string | null
 }
 
 const emptyForm = {
   office_name: '',
   building: '',
   room: '',
-  latitude: 0,
-  longitude: 0,
-  school: 'ISAP'
-}
-
-// Parse coordinate string like "17.64272° N" or "17.64272 N" or just "17.64272"
-function parseCoordinate(value: string, type: 'lat' | 'lng'): number | null {
-  const clean = value.trim().replace(/°/g, '').toUpperCase()
-  const match = clean.match(/^(-?\d+\.?\d*)\s*([NSEW])?$/)
-  if (!match) return null
-
-  let num = parseFloat(match[1])
-  const dir = match[2]
-
-  if (type === 'lat') {
-    if (dir === 'S') num = -Math.abs(num)
-    if (dir === 'N') num = Math.abs(num)
-    if (num < -90 || num > 90) return null
-  }
-
-  if (type === 'lng') {
-    if (dir === 'W') num = -Math.abs(num)
-    if (dir === 'E') num = Math.abs(num)
-    if (num < -180 || num > 180) return null
-  }
-
-  return num
-}
-
-// Format stored decimal to display string
-function formatCoord(value: number, type: 'lat' | 'lng'): string {
-  if (!value) return ''
-  const abs = Math.abs(value)
-  const dir = type === 'lat'
-    ? value >= 0 ? 'N' : 'S'
-    : value >= 0 ? 'E' : 'W'
-  return `${abs.toFixed(5)}° ${dir}`
+  latitude: '',
+  longitude: '',
+  school: 'ISAP',
+  description: '',
 }
 
 export default function AdminLocationsPage() {
   const [locations, setLocations] = useState<Location[]>([])
   const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState<'ALL' | 'ISAP' | 'MCNP'>('ALL')
   const [showForm, setShowForm] = useState(false)
-  const [editId, setEditId] = useState<string | null>(null)
+  const [editItem, setEditItem] = useState<Location | null>(null)
   const [form, setForm] = useState(emptyForm)
-  const [latInput, setLatInput] = useState('')
-  const [lngInput, setLngInput] = useState('')
-  const [latError, setLatError] = useState('')
-  const [lngError, setLngError] = useState('')
   const [saving, setSaving] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
-  const [filterSchool, setFilterSchool] = useState<'ALL' | 'ISAP' | 'MCNP'>('ALL')
+  const [deleting, setDeleting] = useState(false)
+  const [success, setSuccess] = useState('')
+  const [error, setError] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const fetchLocations = async () => {
     const supabase = createClient()
     const { data } = await supabase
       .from('locations')
       .select('*')
-      .order('school')
-      .order('office_name')
+      .order('school').order('office_name')
     setLocations(data || [])
     setLoading(false)
   }
 
-  useEffect(() => { fetchLocations() }, [])
-
-  const validateAndSetLat = (value: string) => {
-    setLatInput(value)
-    if (!value.trim()) { setLatError(''); return }
-    const parsed = parseCoordinate(value, 'lat')
-    if (parsed === null) {
-      setLatError('Invalid. Use format: 17.64272° N or 17.64272')
-    } else {
-      setLatError('')
-      setForm(prev => ({ ...prev, latitude: parsed }))
+  useEffect(() => {
+    let mounted = true
+    const load = async () => {
+      const supabase = createClient()
+      const { data } = await supabase
+        .from('locations')
+        .select('*')
+        .order('school').order('office_name')
+      if (mounted) {
+        setLocations(data || [])
+        setLoading(false)
+      }
     }
+    load()
+    return () => { mounted = false }
+  }, [])
+
+  const filtered = locations.filter(l => filter === 'ALL' || l.school === filter)
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setPhotoFile(file)
+    const reader = new FileReader()
+    reader.onload = (ev) => setPhotoPreview(ev.target?.result as string)
+    reader.readAsDataURL(file)
   }
 
-  const validateAndSetLng = (value: string) => {
-    setLngInput(value)
-    if (!value.trim()) { setLngError(''); return }
-    const parsed = parseCoordinate(value, 'lng')
-    if (parsed === null) {
-      setLngError('Invalid. Use format: 121.76166° E or 121.76166')
-    } else {
-      setLngError('')
-      setForm(prev => ({ ...prev, longitude: parsed }))
-    }
-  }
+  const uploadPhoto = async (locationId: string): Promise<string | null> => {
+    if (!photoFile) return null
+    setUploading(true)
+    try {
+      const supabase = createClient()
+      const ext = photoFile.name.split('.').pop() || 'jpg'
+      const path = `${locationId}/photo.${ext}`
 
-  const openForm = (location?: Location) => {
-    if (location) {
-      setForm({
-        office_name: location.office_name,
-        building: location.building,
-        room: location.room,
-        latitude: location.latitude,
-        longitude: location.longitude,
-        school: location.school,
-      })
-      setLatInput(formatCoord(location.latitude, 'lat'))
-      setLngInput(formatCoord(location.longitude, 'lng'))
-      setEditId(location.id)
-    } else {
-      setForm(emptyForm)
-      setLatInput('')
-      setLngInput('')
-      setEditId(null)
-    }
-    setLatError('')
-    setLngError('')
-    setShowForm(true)
-  }
+      const { error: uploadError } = await supabase.storage
+        .from('locations')
+        .upload(path, photoFile, { upsert: true, contentType: photoFile.type })
 
-  const closeForm = () => {
-    setShowForm(false)
-    setEditId(null)
-    setForm(emptyForm)
-    setLatInput('')
-    setLngInput('')
-    setLatError('')
-    setLngError('')
+      if (uploadError) throw uploadError
+
+      const { data: { publicUrl } } = supabase.storage.from('locations').getPublicUrl(path)
+      return publicUrl
+    } catch (err) {
+      console.error('Photo upload failed:', err)
+      return null
+    } finally {
+      setUploading(false)
+    }
   }
 
   const handleSave = async () => {
-    if (!form.office_name.trim()) return
-    if (latError || lngError) return
-
-    // Final parse before saving
-    if (latInput) {
-      const parsed = parseCoordinate(latInput, 'lat')
-      if (parsed === null) { setLatError('Invalid latitude'); return }
-      form.latitude = parsed
-    }
-    if (lngInput) {
-      const parsed = parseCoordinate(lngInput, 'lng')
-      if (parsed === null) { setLngError('Invalid longitude'); return }
-      form.longitude = parsed
-    }
-
+    if (!form.office_name.trim()) { setError('Office name is required'); return }
     setSaving(true)
-    const supabase = createClient()
-    if (editId) {
-      await supabase.from('locations').update(form).eq('id', editId)
-    } else {
-      await supabase.from('locations').insert(form)
+    setError('')
+
+    try {
+      const supabase = createClient()
+      const payload = {
+        office_name: form.office_name.trim(),
+        building: form.building.trim(),
+        room: form.room.trim(),
+        latitude: form.latitude ? parseFloat(form.latitude) : null,
+        longitude: form.longitude ? parseFloat(form.longitude) : null,
+        school: form.school,
+        description: form.description.trim() || null,
+      }
+
+      if (editItem) {
+        const { error: err } = await supabase
+          .from('locations').update(payload).eq('id', editItem.id)
+        if (err) throw err
+
+        if (photoFile) {
+          const url = await uploadPhoto(editItem.id)
+          if (url) await supabase.from('locations').update({ photo_url: url }).eq('id', editItem.id)
+        }
+      } else {
+        const { data, error: err } = await supabase
+          .from('locations').insert(payload).select().single()
+        if (err) throw err
+
+        if (photoFile && data) {
+          const url = await uploadPhoto(data.id)
+          if (url) await supabase.from('locations').update({ photo_url: url }).eq('id', data.id)
+        }
+      }
+
+      setSuccess(editItem ? 'Location updated!' : 'Location added!')
+      setTimeout(() => setSuccess(''), 3000)
+      setShowForm(false)
+      setEditItem(null)
+      setForm(emptyForm)
+      setPhotoFile(null)
+      setPhotoPreview(null)
+      await fetchLocations()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save')
+    } finally {
+      setSaving(false)
     }
-    await fetchLocations()
-    closeForm()
-    setSaving(false)
+  }
+
+  const handleEdit = (loc: Location) => {
+    setEditItem(loc)
+    setForm({
+      office_name: loc.office_name || '',
+      building: loc.building || '',
+      room: loc.room || '',
+      latitude: loc.latitude?.toString() || '',
+      longitude: loc.longitude?.toString() || '',
+      school: loc.school || 'ISAP',
+      description: loc.description || '',
+    })
+    setPhotoPreview(loc.photo_url || null)
+    setPhotoFile(null)
+    setError('')
+    setShowForm(true)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const handleDelete = async (id: string) => {
+    setDeleting(true)
     const supabase = createClient()
     await supabase.from('locations').delete().eq('id', id)
-    await fetchLocations()
     setDeleteId(null)
+    setSuccess('Location deleted!')
+    setTimeout(() => setSuccess(''), 3000)
+    await fetchLocations()
+    setDeleting(false)
   }
 
-  const filtered = filterSchool === 'ALL'
-    ? locations
-    : locations.filter(l => l.school === filterSchool)
+  const removePhoto = async (id: string) => {
+    const supabase = createClient()
+    await supabase.from('locations').update({ photo_url: null }).eq('id', id)
+    setPhotoPreview(null)
+    await fetchLocations()
+  }
 
   return (
     <div className="space-y-6">
 
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+        <div>
           <h1 className="text-2xl font-bold" style={{ color: 'var(--text)' }}>Locations</h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Manage campus offices and rooms with GPS coordinates</p>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+            Manage campus offices with photos and GPS coordinates
+          </p>
         </div>
         <button
-          onClick={() => { setShowForm(true); setEditId(null); setForm(emptyForm) }}
-          className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-xl transition-all shrink-0"
+          onClick={() => { setShowForm(true); setEditItem(null); setForm(emptyForm); setPhotoPreview(null); setPhotoFile(null); setError('') }}
+          className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-xl shrink-0"
         >
           <Plus size={14} />
           Add Location
         </button>
       </div>
+
       {/* Filter */}
-      <div className="flex items-center gap-2">
+      <div className="flex gap-2">
         {(['ALL', 'ISAP', 'MCNP'] as const).map(s => (
-          <button
-            key={s}
-            onClick={() => setFilterSchool(s)}
-            className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              filterSchool === s
-                ? s === 'ISAP' ? 'bg-red-100 text-red-700'
-                  : s === 'MCNP' ? 'bg-blue-100 text-blue-700'
-                  : 'bg-slate-800 text-white'
-                : 'bg-white border border-slate-200 text-slate-500 hover:border-slate-300'
-            }`}
-          >
-            {s}
+          <button key={s} onClick={() => setFilter(s)}
+            className="px-4 py-2 rounded-xl text-xs font-bold transition-all"
+            style={{
+              backgroundColor: filter === s
+                ? s === 'ISAP' ? '#b91c1c' : s === 'MCNP' ? '#1d4ed8' : '#1e293b'
+                : 'var(--bg-card)',
+              color: filter === s ? '#fff' : 'var(--text-muted)',
+              border: `1px solid ${filter === s ? 'transparent' : 'var(--border)'}`,
+            }}>
+            {s === 'ALL' ? `All (${locations.length})` : `${s} (${locations.filter(l => l.school === s).length})`}
           </button>
         ))}
-        <span className="text-xs text-slate-400 ml-1">{filtered.length} locations</span>
       </div>
 
-      {/* Add/Edit form */}
+      {/* Success */}
+      {success && (
+        <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3">
+          <Check size={14} className="text-emerald-600 shrink-0" />
+          <p className="text-xs font-semibold text-emerald-700">{success}</p>
+        </div>
+      )}
+
+      {/* Form */}
       {showForm && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+        <div className="rounded-2xl border p-6 space-y-5" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold text-slate-800">
-              {editId ? 'Edit Location' : 'Add New Location'}
+            <h2 className="text-sm font-bold" style={{ color: 'var(--text)' }}>
+              {editItem ? 'Edit Location' : 'Add New Location'}
             </h2>
-            <button onClick={closeForm} className="text-slate-400 hover:text-slate-600">
+            <button onClick={() => { setShowForm(false); setEditItem(null) }}
+              style={{ color: 'var(--text-faint)' }}>
               <X size={18} />
             </button>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
-            {/* Office name */}
+            {/* Photo upload */}
             <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                Office / Room name
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>
+                Building / Office Photo
               </label>
+              <div className="flex items-start gap-4">
+                {/* Preview */}
+                <div
+                  className="w-32 h-24 rounded-xl border-2 overflow-hidden flex items-center justify-center shrink-0 cursor-pointer"
+                  style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg)' }}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  {photoPreview ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="text-center">
+                      <Image size={24} style={{ color: 'var(--text-faint)', margin: '0 auto 4px' }} />
+                      <p className="text-[10px]" style={{ color: 'var(--text-faint)' }}>Click to upload</p>
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1">
+                  <input ref={fileRef} type="file" accept="image/*" onChange={handlePhotoChange} style={{ display: 'none' }} />
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-semibold transition-all mb-2"
+                    style={{ borderColor: 'var(--border)', color: 'var(--text-muted)', backgroundColor: 'var(--bg)' }}
+                  >
+                    <Upload size={13} />
+                    {photoPreview ? 'Change Photo' : 'Upload Photo'}
+                  </button>
+                  {photoPreview && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPhotoPreview(null)
+                        setPhotoFile(null)
+                        if (editItem) removePhoto(editItem.id)
+                      }}
+                      className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-700"
+                    >
+                      <X size={12} />
+                      Remove photo
+                    </button>
+                  )}
+                  <p className="text-[10px] mt-1.5" style={{ color: 'var(--text-faint)' }}>
+                    JPG, PNG. Max 5MB. Students will see this when they tap the location.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Office name */}
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Office Name *</label>
               <input
                 value={form.office_name}
                 onChange={e => setForm({ ...form, office_name: e.target.value })}
                 placeholder="e.g. Registrar Office"
-                className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-slate-400 focus:outline-none"
+                className="w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none"
+                style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
               />
             </div>
 
             {/* Building */}
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Building</label>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Building</label>
               <input
                 value={form.building}
                 onChange={e => setForm({ ...form, building: e.target.value })}
                 placeholder="e.g. Administration Building"
-                className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-slate-400 focus:outline-none"
+                className="w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none"
+                style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
               />
             </div>
 
             {/* Room */}
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Room</label>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Room</label>
               <input
                 value={form.room}
                 onChange={e => setForm({ ...form, room: e.target.value })}
                 placeholder="e.g. Room 101"
-                className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-slate-400 focus:outline-none"
+                className="w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none"
+                style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
               />
-            </div>
-
-            {/* Latitude */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                Latitude
-              </label>
-              <input
-                value={latInput}
-                onChange={e => validateAndSetLat(e.target.value)}
-                placeholder="e.g. 17.64272° N"
-                className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none font-mono ${
-                  latError
-                    ? 'border-red-300 bg-red-50 focus:border-red-400'
-                    : 'border-slate-200 focus:border-slate-400'
-                }`}
-              />
-              {latError && (
-                <p className="text-xs text-red-500 mt-1">{latError}</p>
-              )}
-              {!latError && form.latitude !== 0 && (
-                <p className="text-xs text-emerald-600 mt-1 font-mono">
-                  ✓ Stored as: {form.latitude.toFixed(5)}
-                </p>
-              )}
-            </div>
-
-            {/* Longitude */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                Longitude
-              </label>
-              <input
-                value={lngInput}
-                onChange={e => validateAndSetLng(e.target.value)}
-                placeholder="e.g. 121.76166° E"
-                className={`w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none font-mono ${
-                  lngError
-                    ? 'border-red-300 bg-red-50 focus:border-red-400'
-                    : 'border-slate-200 focus:border-slate-400'
-                }`}
-              />
-              {lngError && (
-                <p className="text-xs text-red-500 mt-1">{lngError}</p>
-              )}
-              {!lngError && form.longitude !== 0 && (
-                <p className="text-xs text-emerald-600 mt-1 font-mono">
-                  ✓ Stored as: {form.longitude.toFixed(5)}
-                </p>
-              )}
-            </div>
-
-            {/* How to get coordinates tip */}
-            <div className="sm:col-span-2 bg-blue-50 border border-blue-100 rounded-xl p-4">
-              <p className="text-xs font-bold text-blue-700 mb-2 flex items-center gap-1.5">
-                <Navigation size={13} />
-                How to get accurate coordinates
-              </p>
-              <div className="space-y-1.5 text-xs text-blue-600">
-                <p><span className="font-semibold">iPhone Maps:</span> Long press location → tap the coordinates shown → copy them</p>
-                <p><span className="font-semibold">Google Maps (phone):</span> Long press location → coordinates appear at top → tap to copy</p>
-                <p><span className="font-semibold">Google Maps (web):</span> Right-click location → click the coordinates shown</p>
-                <p className="mt-2 font-semibold text-blue-700">Accepted formats:</p>
-                <div className="font-mono bg-white border border-blue-100 rounded-lg px-3 py-2 space-y-0.5">
-                  <p>17.64272° N &nbsp;&nbsp; 121.76166° E</p>
-                  <p>17.64272 N &nbsp;&nbsp;&nbsp; 121.76166 E</p>
-                  <p>17.64272 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 121.76166</p>
-                  <p>-17.64272 &nbsp;&nbsp;&nbsp;&nbsp; -121.76166 (for S/W)</p>
-                </div>
-              </div>
             </div>
 
             {/* School */}
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">School</label>
-              <div className="grid grid-cols-2 gap-2 max-w-xs">
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>School</label>
+              <div className="flex gap-2">
                 {(['ISAP', 'MCNP'] as const).map(s => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setForm({ ...form, school: s })}
-                    className={`py-2.5 rounded-xl border-2 text-xs font-bold transition-all ${
-                      form.school === s
-                        ? s === 'ISAP'
-                          ? 'border-red-400 bg-red-50 text-red-700'
-                          : 'border-blue-400 bg-blue-50 text-blue-700'
-                        : 'border-slate-100 text-slate-500 hover:border-slate-200'
-                    }`}
-                  >
+                  <button key={s} type="button" onClick={() => setForm({ ...form, school: s })}
+                    className="flex-1 py-2.5 rounded-xl border-2 text-xs font-bold transition-all"
+                    style={{
+                      borderColor: form.school === s ? (s === 'ISAP' ? '#dc2626' : '#2563eb') : 'var(--border)',
+                      backgroundColor: form.school === s ? (s === 'ISAP' ? '#fee2e2' : '#dbeafe') : 'var(--bg)',
+                      color: form.school === s ? (s === 'ISAP' ? '#b91c1c' : '#1d4ed8') : 'var(--text-muted)',
+                    }}>
                     {s}
                   </button>
                 ))}
               </div>
             </div>
+
+            {/* Description */}
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Description</label>
+              <textarea
+                value={form.description}
+                onChange={e => setForm({ ...form, description: e.target.value })}
+                placeholder="Brief description of this office and its services..."
+                rows={2}
+                className="w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none resize-none"
+                style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+              />
+            </div>
+
+            {/* GPS Coordinates */}
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>
+                Latitude
+              </label>
+              <input
+                value={form.latitude}
+                onChange={e => setForm({ ...form, latitude: e.target.value })}
+                placeholder="e.g. 17.6135"
+                className="w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none font-mono"
+                style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>
+                Longitude
+              </label>
+              <input
+                value={form.longitude}
+                onChange={e => setForm({ ...form, longitude: e.target.value })}
+                placeholder="e.g. 121.7290"
+                className="w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none font-mono"
+                style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+              />
+              <p className="text-[10px] mt-1" style={{ color: 'var(--text-faint)' }}>
+                💡 Open Google Maps, long press the location, copy the coordinates
+              </p>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2 pt-2">
+          {error && (
+            <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+              <p className="text-xs text-red-600">{error}</p>
+            </div>
+          )}
+
+          <div className="flex items-center gap-3">
             <button
               onClick={handleSave}
-              disabled={saving || !form.office_name.trim() || !!latError || !!lngError}
-              className="flex items-center gap-2 px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-semibold rounded-xl disabled:opacity-50 transition-all"
+              disabled={saving || uploading}
+              className="flex items-center gap-2 px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-semibold rounded-xl disabled:opacity-50"
             >
-              <Check size={15} />
-              {saving ? 'Saving...' : editId ? 'Update Location' : 'Add Location'}
+              {saving || uploading
+                ? <Loader2 size={15} className="animate-spin" />
+                : <Check size={15} />
+              }
+              {uploading ? 'Uploading photo...' : saving ? 'Saving...' : editItem ? 'Save Changes' : 'Add Location'}
             </button>
             <button
-              onClick={closeForm}
-              className="px-5 py-2.5 border border-slate-200 text-slate-600 text-sm font-semibold rounded-xl hover:bg-slate-50"
+              onClick={() => { setShowForm(false); setEditItem(null); setPhotoPreview(null); setPhotoFile(null) }}
+              className="px-5 py-2.5 rounded-xl border text-sm font-semibold"
+              style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
             >
               Cancel
             </button>
@@ -385,93 +439,97 @@ export default function AdminLocationsPage() {
         <div className="flex justify-center py-12">
           <div className="w-6 h-6 border-[3px] border-slate-200 border-t-slate-500 rounded-full animate-spin" />
         </div>
+      ) : filtered.length === 0 ? (
+        <div className="rounded-2xl border p-10 text-center" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+          <MapPin size={28} className="mx-auto mb-2" style={{ color: 'var(--text-faint)' }} />
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No locations yet</p>
+        </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map(loc => (
-            <div key={loc.id} className="bg-white rounded-2xl border border-slate-100 p-5">
-              <div className="flex items-start gap-3">
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                  loc.school === 'ISAP' ? 'bg-red-100' : 'bg-blue-100'
-                }`}>
-                  <MapPin size={15} className={loc.school === 'ISAP' ? 'text-red-600' : 'text-blue-600'} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="text-sm font-semibold text-slate-900">{loc.office_name}</h3>
-                    <span className={`shrink-0 text-xs font-bold px-2 py-0.5 rounded-full ${
-                      loc.school === 'ISAP' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
-                    }`}>
-                      {loc.school}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-400 mt-0.5">{loc.building}</p>
-                  {loc.room && <p className="text-xs text-slate-400">{loc.room}</p>}
+            <div key={loc.id} className="rounded-2xl border overflow-hidden"
+              style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
 
-                  {/* Coordinates display */}
-                  {loc.latitude && loc.longitude ? (
-                    <div className="mt-2 bg-slate-50 rounded-lg px-3 py-2">
-                      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">
-                        GPS Coordinates
-                      </p>
-                      <p className="text-xs font-mono text-slate-600">
-                        {formatCoord(loc.latitude, 'lat')} &nbsp; {formatCoord(loc.longitude, 'lng')}
-                      </p>
-                      <p className="text-[10px] font-mono text-slate-400 mt-0.5">
-                        {loc.latitude.toFixed(5)}, {loc.longitude.toFixed(5)}
-                      </p>
+              {/* Photo */}
+              {loc.photo_url ? (
+                <div className="h-36 overflow-hidden">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={loc.photo_url} alt={loc.office_name} className="w-full h-full object-cover" />
+                </div>
+              ) : (
+                <div className="h-24 flex items-center justify-center"
+                  style={{ backgroundColor: loc.school === 'ISAP' ? '#fee2e2' : '#dbeafe' }}>
+                  <div className="text-center">
+                    <Image size={24} style={{ color: loc.school === 'ISAP' ? '#dc2626' : '#2563eb', opacity: 0.4, margin: '0 auto 2px' }} />
+                    <p className="text-[10px]" style={{ color: loc.school === 'ISAP' ? '#dc2626' : '#2563eb', opacity: 0.5 }}>No photo</p>
+                  </div>
+                </div>
+              )}
+
+              <div className="p-4">
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold truncate" style={{ color: 'var(--text)' }}>{loc.office_name}</p>
+                    <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{loc.building}</p>
+                    {loc.room && <p className="text-xs" style={{ color: 'var(--text-faint)' }}>{loc.room}</p>}
+                  </div>
+                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full shrink-0 ${
+                    loc.school === 'ISAP' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                  }`}>
+                    {loc.school}
+                  </span>
+                </div>
+
+                {loc.description && (
+                  <p className="text-xs mb-3 line-clamp-2" style={{ color: 'var(--text-muted)' }}>
+                    {loc.description}
+                  </p>
+                )}
+
+                {loc.latitude && loc.longitude && (
+                  <div className="flex items-center gap-1 mb-3">
+                    <MapPin size={10} style={{ color: 'var(--text-faint)' }} />
+                    <p className="text-[10px] font-mono" style={{ color: 'var(--text-faint)' }}>
+                      {loc.latitude.toFixed(5)}, {loc.longitude.toFixed(5)}
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleEdit(loc)}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-all"
+                    style={{ backgroundColor: 'var(--bg)', color: 'var(--text-muted)' }}
+                  >
+                    <Pencil size={12} />
+                    Edit
+                  </button>
+
+                  {deleteId === loc.id ? (
+                    <div className="flex gap-1.5">
+                      <button onClick={() => handleDelete(loc.id)} disabled={deleting}
+                        className="flex-1 py-2 rounded-xl text-xs font-bold bg-red-600 text-white disabled:opacity-50">
+                        {deleting ? '...' : 'Yes'}
+                      </button>
+                      <button onClick={() => setDeleteId(null)}
+                        className="flex-1 py-2 rounded-xl text-xs font-bold border"
+                        style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
+                        No
+                      </button>
                     </div>
                   ) : (
-                    <div className="mt-2 bg-amber-50 rounded-lg px-3 py-2">
-                      <p className="text-[10px] text-amber-500 font-semibold">
-                        ⚠ No coordinates — directions unavailable
-                      </p>
-                    </div>
+                    <button
+                      onClick={() => setDeleteId(loc.id)}
+                      className="p-2 rounded-xl transition-all hover:bg-red-50 hover:text-red-500"
+                      style={{ color: 'var(--text-faint)' }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
                   )}
                 </div>
               </div>
-
-              {/* Actions */}
-              <div className="flex items-center gap-2 mt-4 pt-3 border-t border-slate-50">
-                <button
-                  onClick={() => openForm(loc)}
-                  className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-all"
-                >
-                  <Pencil size={13} /> Edit
-                </button>
-                {deleteId === loc.id ? (
-                  <div className="flex items-center gap-1.5 ml-auto">
-                    <span className="text-xs text-red-500 font-medium">Delete?</span>
-                    <button
-                      onClick={() => handleDelete(loc.id)}
-                      className="text-xs font-bold text-red-600 px-2 py-1 rounded-lg hover:bg-red-50"
-                    >
-                      Yes
-                    </button>
-                    <button
-                      onClick={() => setDeleteId(null)}
-                      className="text-xs font-bold text-slate-500 px-2 py-1 rounded-lg hover:bg-slate-100"
-                    >
-                      No
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setDeleteId(loc.id)}
-                    className="flex items-center gap-1.5 text-xs font-semibold text-red-400 hover:text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-all ml-auto"
-                  >
-                    <Trash2 size={13} /> Delete
-                  </button>
-                )}
-              </div>
             </div>
           ))}
-
-          {filtered.length === 0 && (
-            <div className="sm:col-span-2 bg-white rounded-2xl border border-slate-100 p-10 text-center">
-              <MapPin size={28} className="text-slate-300 mx-auto mb-2" />
-              <p className="text-sm text-slate-400">No locations found</p>
-            </div>
-          )}
         </div>
       )}
     </div>

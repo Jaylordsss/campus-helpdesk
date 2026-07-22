@@ -1,16 +1,16 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/src/lib/supabase/client'
-import { MapPin, Navigation, Clock, Footprints, X, AlertCircle } from 'lucide-react'
+import { MapPin, Search, X, Navigation, Building2, Image } from 'lucide-react'
 import dynamic from 'next/dynamic'
 
 const MapComponent = dynamic(() => import('@/components/MapComponent'), {
   ssr: false,
   loading: () => (
     <div className="w-full h-full flex items-center justify-center bg-slate-100 rounded-2xl">
-      <div className="text-center space-y-2">
-        <div className="w-6 h-6 border-[3px] border-slate-200 border-t-slate-500 rounded-full animate-spin mx-auto" />
+      <div className="text-center">
+        <div className="w-8 h-8 border-[3px] border-slate-200 border-t-slate-500 rounded-full animate-spin mx-auto mb-2" />
         <p className="text-xs text-slate-400">Loading map...</p>
       </div>
     </div>
@@ -25,455 +25,286 @@ type Location = {
   latitude: number
   longitude: number
   school: string
-}
-
-type RouteInfo = {
-  distance: number
-  duration: number
-  coordinates: [number, number][]
-  isStraightLine?: boolean
-}
-
-function haversineDistance(
-  lat1: number, lng1: number,
-  lat2: number, lng2: number
-): number {
-  const R = 6371000
-  const dLat = (lat2 - lat1) * Math.PI / 180
-  const dLng = (lng2 - lng1) * Math.PI / 180
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1 * Math.PI / 180) *
-    Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLng / 2) ** 2
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-}
-
-function generateStraightLinePoints(
-  from: [number, number],
-  to: [number, number]
-): [number, number][] {
-  const points: [number, number][] = []
-  const steps = 30
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps
-    points.push([
-      from[0] + (to[0] - from[0]) * t,
-      from[1] + (to[1] - from[1]) * t,
-    ])
-  }
-  return points
+  photo_url?: string | null
+  description?: string | null
 }
 
 export default function MapPage() {
   const [locations, setLocations] = useState<Location[]>([])
-  const [profile, setProfile] = useState<{ name: string; school: string } | null>(null)
-  const [selectedLocation, setSelectedLocation] = useState<Location | null>(null)
-  const [userPosition, setUserPosition] = useState<[number, number] | null>(null)
-  const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null)
-  const [loadingRoute, setLoadingRoute] = useState(false)
-  const [filterSchool, setFilterSchool] = useState<'ALL' | 'ISAP' | 'MCNP'>('ALL')
   const [loading, setLoading] = useState(true)
-  const [locationError, setLocationError] = useState('')
- const [locationPermission, setLocationPermission] = useState<'pending' | 'granted' | 'denied'>('pending')
+  const [search, setSearch] = useState('')
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedLoc, setSelectedLoc] = useState<Location | null>(null)
+  const [profile, setProfile] = useState<{ school: string } | null>(null)
+  const [showPhoto, setShowPhoto] = useState(false)
+
+  const isISAP = profile?.school === 'ISAP'
+  const accentColor = isISAP ? '#dc2626' : '#2563eb'
 
   useEffect(() => {
-    const getData = async () => {
+    const init = async () => {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('name, school')
-        .eq('id', user.id)
-        .single()
-
-      if (profileData) {
-        setProfile(profileData)
-        setFilterSchool(profileData.school as 'ISAP' | 'MCNP')
+      if (user) {
+        const { data: prof } = await supabase
+          .from('profiles').select('school').eq('id', user.id).single()
+        if (prof) setProfile(prof)
       }
-
-      const { data: locData } = await supabase
+      const { data } = await supabase
         .from('locations')
         .select('*')
-        .order('school')
-        .order('office_name')
-
-      setLocations(locData || [])
+        .order('school').order('office_name')
+      setLocations(data || [])
       setLoading(false)
     }
-    getData()
+    init()
   }, [])
 
-  const requestLocation = () => {
-    if (!navigator.geolocation) {
-      setLocationError('Geolocation is not supported by your browser.')
-      setLocationPermission('denied')
-      return
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      pos => {
-        setUserPosition([pos.coords.latitude, pos.coords.longitude])
-        setLocationPermission('granted')
-        setLocationError('')
-      },
-      err => {
-        setLocationPermission('denied')
-        if (err.code === err.PERMISSION_DENIED) {
-          setLocationError('Location access denied. Please enable it in your browser settings.')
-        } else {
-          setLocationError('Could not get your location. Please try again.')
-        }
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    )
-  }
-
-  const getDirections = async (destination: Location) => {
-    if (locationPermission === 'denied') {
-      setLocationError('Please enable location access to get directions.')
-      return
-    }
-
-    if (!userPosition) {
-      setLocationError('Getting your location... please wait and try again.')
-      requestLocation()
-      return
-    }
-
-    if (!destination.latitude || !destination.longitude) {
-      setLocationError('This office does not have coordinates set yet.')
-      return
-    }
-
-    setLoadingRoute(true)
-    setSelectedLocation(destination)
-    setRouteInfo(null)
-    setLocationError('')
-
-    // Calculate straight-line distance
-    const straightDistance = haversineDistance(
-      userPosition[0], userPosition[1],
-      destination.latitude, destination.longitude
-    )
-
-    // Always use straight line for campus
-    // Campus distances are too short for road routing to be useful
-    const straightLinePoints = generateStraightLinePoints(
-      [userPosition[0], userPosition[1]],
-      [destination.latitude, destination.longitude]
-    )
-
-    // Walking estimate: 5 km/h = 83.3 m/min
-    const estimatedDuration = (straightDistance / 83.3) * 60
-
-    setRouteInfo({
-      distance: straightDistance,
-      duration: estimatedDuration,
-      coordinates: straightLinePoints,
-      isStraightLine: true
-    })
-
-    setLoadingRoute(false)
-  }
-
-  const clearRoute = () => {
-    setSelectedLocation(null)
-    setRouteInfo(null)
-    setLocationError('')
+  const handleSelect = (loc: Location) => {
+    setSelectedId(loc.id)
+    setSelectedLoc(loc)
+    setShowPhoto(false)
   }
 
   const filtered = locations.filter(l =>
-    filterSchool === 'ALL' || l.school === filterSchool
+    !search ||
+    l.office_name.toLowerCase().includes(search.toLowerCase()) ||
+    l.building?.toLowerCase().includes(search.toLowerCase())
   )
 
-  const isISAP = profile?.school === 'ISAP'
-  const accentBtn = isISAP
-    ? 'bg-red-500 hover:bg-red-600'
-    : 'bg-blue-500 hover:bg-blue-600'
-  const accentText = isISAP ? 'text-red-600' : 'text-blue-600'
-  const accentBanner = isISAP
-    ? 'bg-red-50 border-red-100'
-    : 'bg-blue-50 border-blue-100'
-
-  const formatDistance = (m: number) =>
-    m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(2)} km`
-
-  const formatDuration = (s: number) => {
-    const mins = Math.round(s / 60)
-    if (mins < 1) return '< 1 min walk'
-    if (mins < 60) return `~${mins} min walk`
-    return `~${Math.floor(mins / 60)}h ${mins % 60}m walk`
-  }
-
-  const mapCenter: [number, number] = locations.find(
-    l => l.latitude && l.longitude
-  )
-    ? [
-        locations.find(l => l.latitude && l.longitude)!.latitude,
-        locations.find(l => l.latitude && l.longitude)!.longitude,
-      ]
-    : [14.5995, 120.9842]
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="w-6 h-6 border-[3px] border-slate-200 border-t-slate-500 rounded-full animate-spin" />
-      </div>
-    )
-  }
+  const isapLocations = filtered.filter(l => l.school === 'ISAP')
+  const mcnpLocations = filtered.filter(l => l.school === 'MCNP')
 
   return (
-    <div className="space-y-4 max-w-6xl mx-auto">
+    <div className="h-[calc(100vh-80px)] flex flex-col gap-4 sm:flex-row">
 
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Campus Map</h1>
-          <p className="text-sm text-slate-400 mt-1">
-            Find offices and get walking directions around campus
-          </p>
-        </div>
+      {/* Sidebar */}
+      <div className="w-full sm:w-72 flex flex-col gap-3 shrink-0 overflow-hidden">
 
-        {locationPermission === 'pending' && (
-          <button
-            onClick={requestLocation}
-            className={`flex items-center gap-2 px-4 py-2.5 text-white text-sm font-semibold rounded-xl transition-all shrink-0 ${accentBtn}`}
-          >
-            <Navigation size={15} />
-            Enable Location
-          </button>
-        )}
-        {locationPermission === 'granted' && (
-          <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-100 rounded-xl shrink-0">
-            <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-            <span className="text-xs font-semibold text-emerald-700">
-              Location active
-            </span>
-          </div>
-        )}
-      </div>
-
-      {/* Enable location prompt */}
-      {locationPermission === 'pending' && (
-        <div className={`rounded-2xl border p-4 flex items-start gap-3 ${accentBanner}`}>
-          <Navigation size={18} className={`shrink-0 mt-0.5 ${accentText}`} />
-          <div>
-            <p className={`text-sm font-semibold ${accentText}`}>
-              Enable location for directions
-            </p>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Click "Enable Location" above to allow the map to show your
-              position and draw a direct line to campus offices.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Route info banner */}
-      {selectedLocation && routeInfo && (
-        <div className={`rounded-2xl border p-4 ${accentBanner}`}>
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex-1">
-              <p className={`text-sm font-bold ${accentText}`}>
-                Directions to {selectedLocation.office_name}
-              </p>
-              <p className="text-xs text-slate-500 mt-0.5">
-                {selectedLocation.building}
-                {selectedLocation.room ? ` · ${selectedLocation.room}` : ''}
-              </p>
-              <p className="text-xs text-amber-600 mt-1 font-medium">
-                ⚠ Straight-line shown — please follow campus walkways
-              </p>
-            </div>
-            <button
-              onClick={clearRoute}
-              className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-white rounded-lg transition-all shrink-0"
-            >
-              <X size={16} />
-            </button>
-          </div>
-          <div className="flex items-center gap-6 mt-3">
-            <div className="flex items-center gap-2">
-              <Footprints size={15} className={accentText} />
-              <span className="text-sm font-bold text-slate-800">
-                {formatDistance(routeInfo.distance)}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Clock size={15} className={accentText} />
-              <span className="text-sm font-bold text-slate-800">
-                {formatDuration(routeInfo.duration)}
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Error banner */}
-      {locationError && (
-        <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 flex items-start gap-2">
-          <AlertCircle size={15} className="text-amber-500 shrink-0 mt-0.5" />
-          <p className="text-xs text-amber-700 font-medium">{locationError}</p>
-        </div>
-      )}
-
-      {/* Map + list */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-
-        {/* Map */}
-        <div className="lg:col-span-2 h-[400px] sm:h-[500px] rounded-2xl overflow-hidden border border-slate-200 shadow-sm">
-          <MapComponent
-            center={mapCenter}
-            zoom={18}
-            locations={filtered}
-            userPosition={userPosition}
-            selectedLocation={selectedLocation}
-            routeCoordinates={routeInfo?.coordinates || null}
-            onLocationClick={getDirections}
-            school={profile?.school || 'ISAP'}
+        {/* Search */}
+        <div className="relative">
+          <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search offices..."
+            className="w-full pl-9 pr-4 py-2.5 rounded-xl border text-sm focus:outline-none"
+            style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)', color: 'var(--text)' }}
           />
+          {search && (
+            <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2">
+              <X size={14} className="text-slate-400" />
+            </button>
+          )}
         </div>
 
-        {/* Location list */}
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-            {(['ALL', 'ISAP', 'MCNP'] as const).map(s => (
-              <button
-                key={s}
-                onClick={() => setFilterSchool(s)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                  filterSchool === s
-                    ? s === 'ISAP'
-                      ? 'bg-red-100 text-red-700'
-                      : s === 'MCNP'
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'bg-slate-800 text-white'
-                    : 'bg-white border border-slate-200 text-slate-500 hover:border-slate-300'
-                }`}
-              >
-                {s}
-              </button>
-            ))}
-            <span className="text-xs text-slate-400 ml-1">{filtered.length}</span>
-          </div>
+        {/* Selected location detail card */}
+        {selectedLoc && (
+          <div className="rounded-2xl border overflow-hidden shrink-0"
+            style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
 
-          <div className="space-y-2 overflow-y-auto max-h-[460px] pr-1">
-            {filtered.map(loc => {
-              const isSelected = selectedLocation?.id === loc.id
-              const hasCoords = loc.latitude && loc.longitude
-
-              return (
-                <div
-                  key={loc.id}
-                  className={`bg-white rounded-xl border p-4 transition-all ${
-                    isSelected
-                      ? isISAP
-                        ? 'border-red-300 bg-red-50'
-                        : 'border-blue-300 bg-blue-50'
-                      : 'border-slate-100 hover:border-slate-200'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div
-                      className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                        loc.school === 'ISAP' ? 'bg-red-100' : 'bg-blue-100'
-                      }`}
-                    >
-                      <MapPin
-                        size={15}
-                        className={
-                          loc.school === 'ISAP' ? 'text-red-600' : 'text-blue-600'
-                        }
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-xs font-semibold text-slate-900 leading-tight">
-                          {loc.office_name}
-                        </p>
-                        <span
-                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
-                            loc.school === 'ISAP'
-                              ? 'bg-red-100 text-red-600'
-                              : 'bg-blue-100 text-blue-600'
-                          }`}
-                        >
-                          {loc.school}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-0.5">
-                        {loc.building}
-                      </p>
-                      {loc.room && (
-                        <p className="text-[11px] text-slate-400">{loc.room}</p>
-                      )}
-
-                      {!hasCoords ? (
-                        <p className="text-[10px] text-amber-500 mt-1.5 font-medium">
-                          No coordinates set
-                        </p>
-                      ) : (
-                        <button
-                          onClick={() => getDirections(loc)}
-                          disabled={loadingRoute && isSelected}
-                          className={`mt-2 flex items-center gap-1.5 text-[11px] font-semibold text-white px-3 py-1.5 rounded-lg transition-all disabled:opacity-60 ${accentBtn}`}
-                        >
-                          <Navigation size={11} />
-                          {loadingRoute && isSelected
-                            ? 'Getting route...'
-                            : 'Get Directions'}
-                        </button>
-                      )}
-                    </div>
-                  </div>
+            {/* Photo */}
+            {selectedLoc.photo_url ? (
+              <div className="relative h-36 bg-slate-100 cursor-pointer" onClick={() => setShowPhoto(true)}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={selectedLoc.photo_url}
+                  alt={selectedLoc.office_name}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+                <div className="absolute bottom-2 right-2 bg-white/90 text-slate-700 text-[10px] font-bold px-2 py-1 rounded-lg flex items-center gap-1">
+                  <Image size={10} />
+                  Tap to enlarge
                 </div>
-              )
-            })}
-
-            {filtered.length === 0 && (
-              <div className="bg-white rounded-xl border border-slate-100 p-8 text-center">
-                <MapPin size={24} className="text-slate-300 mx-auto mb-2" />
-                <p className="text-xs text-slate-400">No locations found</p>
+                <div className="absolute top-2 right-2">
+                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
+                    selectedLoc.school === 'ISAP' ? 'bg-red-600 text-white' : 'bg-blue-600 text-white'
+                  }`}>
+                    {selectedLoc.school}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="h-24 flex items-center justify-center"
+                style={{ backgroundColor: isISAP ? '#fee2e2' : '#dbeafe' }}>
+                <Building2 size={32} style={{ color: accentColor, opacity: 0.5 }} />
               </div>
             )}
+
+            <div className="p-4">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>
+                    {selectedLoc.office_name}
+                  </p>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                    {selectedLoc.building}
+                  </p>
+                  {selectedLoc.room && (
+                    <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                      {selectedLoc.room}
+                    </p>
+                  )}
+                  {selectedLoc.description && (
+                    <p className="text-xs mt-1.5 leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                      {selectedLoc.description}
+                    </p>
+                  )}
+                </div>
+                <button onClick={() => { setSelectedId(null); setSelectedLoc(null) }}
+                  className="shrink-0 p-1 rounded-lg hover:bg-black/5"
+                  style={{ color: 'var(--text-faint)' }}>
+                  <X size={14} />
+                </button>
+              </div>
+
+              <div className="mt-3 flex items-center gap-2">
+                <div className="flex items-center gap-1">
+                  <Navigation size={11} style={{ color: accentColor }} />
+                  <p className="text-[10px] font-semibold" style={{ color: accentColor }}>
+                    Enable GPS to get distance
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
+        )}
+
+        {/* Location list */}
+        <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <div className="w-5 h-5 border-[3px] border-slate-200 border-t-slate-500 rounded-full animate-spin" />
+            </div>
+          ) : (
+            <>
+              {isapLocations.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest mb-2 text-red-600">ISAP</p>
+                  <div className="space-y-1">
+                    {isapLocations.map(loc => (
+                      <button
+                        key={loc.id}
+                        onClick={() => handleSelect(loc)}
+                        className="w-full flex items-start gap-3 px-3 py-2.5 rounded-xl text-left transition-all"
+                        style={{
+                          backgroundColor: selectedId === loc.id ? '#fee2e2' : 'transparent',
+                          border: `1px solid ${selectedId === loc.id ? '#fecaca' : 'transparent'}`,
+                        }}
+                      >
+                        <div className="w-7 h-7 rounded-lg bg-red-100 flex items-center justify-center shrink-0 mt-0.5">
+                          <MapPin size={13} className="text-red-600" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold truncate" style={{ color: 'var(--text)' }}>
+                            {loc.office_name}
+                          </p>
+                          <p className="text-[10px] truncate" style={{ color: 'var(--text-faint)' }}>
+                            {loc.building}
+                          </p>
+                        </div>
+                        {loc.photo_url && (
+                          <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={loc.photo_url} alt="" className="w-full h-full object-cover" />
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {mcnpLocations.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest mb-2 text-blue-600">MCNP</p>
+                  <div className="space-y-1">
+                    {mcnpLocations.map(loc => (
+                      <button
+                        key={loc.id}
+                        onClick={() => handleSelect(loc)}
+                        className="w-full flex items-start gap-3 px-3 py-2.5 rounded-xl text-left transition-all"
+                        style={{
+                          backgroundColor: selectedId === loc.id ? '#dbeafe' : 'transparent',
+                          border: `1px solid ${selectedId === loc.id ? '#bfdbfe' : 'transparent'}`,
+                        }}
+                      >
+                        <div className="w-7 h-7 rounded-lg bg-blue-100 flex items-center justify-center shrink-0 mt-0.5">
+                          <MapPin size={13} className="text-blue-600" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold truncate" style={{ color: 'var(--text)' }}>
+                            {loc.office_name}
+                          </p>
+                          <p className="text-[10px] truncate" style={{ color: 'var(--text-faint)' }}>
+                            {loc.building}
+                          </p>
+                        </div>
+                        {loc.photo_url && (
+                          <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={loc.photo_url} alt="" className="w-full h-full object-cover" />
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {filtered.length === 0 && (
+                <div className="text-center py-8">
+                  <MapPin size={24} className="mx-auto mb-2 text-slate-300" />
+                  <p className="text-xs text-slate-400">No offices found</p>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
 
-      {/* How to use */}
-      <div className="bg-white rounded-2xl border border-slate-100 p-4">
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">
-          How to use
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {[
-            {
-              step: '1',
-              text: 'Click "Enable Location" to share your current position',
-            },
-            {
-              step: '2',
-              text: 'Browse offices in the list or click markers on the map',
-            },
-            {
-              step: '3',
-              text: 'Click "Get Directions" to see the straight-line path to the office',
-            },
-          ].map(item => (
-            <div key={item.step} className="flex items-start gap-3">
-              <div
-                className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 ${accentBtn}`}
-              >
-                {item.step}
-              </div>
-              <p className="text-xs text-slate-500 leading-relaxed">{item.text}</p>
-            </div>
-          ))}
-        </div>
+      {/* Map */}
+      <div className="flex-1 min-h-64 rounded-2xl overflow-hidden border"
+        style={{ borderColor: 'var(--border)' }}>
+        {!loading && (
+          <MapComponent
+            locations={locations}
+            selectedId={selectedId}
+            onSelect={handleSelect}
+          />
+        )}
       </div>
+
+      {/* Photo fullscreen modal */}
+      {showPhoto && selectedLoc?.photo_url && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setShowPhoto(false)}
+        >
+          <div className="relative max-w-2xl w-full" onClick={e => e.stopPropagation()}>
+            <button
+              onClick={() => setShowPhoto(false)}
+              className="absolute -top-10 right-0 text-white text-sm font-bold flex items-center gap-2"
+            >
+              <X size={16} /> Close
+            </button>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={selectedLoc.photo_url}
+              alt={selectedLoc.office_name}
+              className="w-full rounded-2xl object-cover max-h-[70vh]"
+            />
+            <div className="mt-3 bg-white rounded-xl p-4">
+              <p className="text-sm font-bold text-slate-900">{selectedLoc.office_name}</p>
+              <p className="text-xs text-slate-500 mt-0.5">{selectedLoc.building} {selectedLoc.room && `· ${selectedLoc.room}`}</p>
+              {selectedLoc.description && (
+                <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">{selectedLoc.description}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
