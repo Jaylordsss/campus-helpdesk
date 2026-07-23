@@ -245,7 +245,7 @@ export default function MapPage() {
                             </p>
                           </div>
 
-                          <Navigation size={14} style={{ color: selectedId === loc.id ? accentColor : 'var(--text-faint)', shrink: 0 }} />
+                          <Navigation size={14} className="shrink-0" style={{ color: selectedId === loc.id ? accentColor : 'var(--text-faint)' }} />
                         </button>
                       ))}
                     </div>
