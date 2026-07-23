@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/src/lib/supabase/client'
-import { Plus, Pencil, Trash2, MapPin, Check, X, Image, Loader2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, MapPin, Check, X, Loader2 } from 'lucide-react'
 
 type Location = {
   id: string
@@ -13,6 +13,8 @@ type Location = {
   longitude: number
   school: string
   photo_url: string | null
+  photo_url_logo: string | null
+  photo_url_pov: string | null
   description: string | null
 }
 
@@ -38,31 +40,13 @@ export default function AdminLocationsPage() {
   const [deleting, setDeleting] = useState(false)
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
-  const [photoFile, setPhotoFile] = useState<File | null>(null)
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
-  const fileRef = useRef<HTMLInputElement>(null)
-
-  
-
-  useEffect(() => {
-    let mounted = true
-    const load = async () => {
-      const supabase = createClient()
-      const { data } = await supabase
-        .from('locations')
-        .select('*')
-        .order('school').order('office_name')
-      if (mounted) {
-        setLocations(data || [])
-        setLoading(false)
-      }
-    }
-    load()
-    return () => { mounted = false }
-  }, [])
-
-  const filtered = locations.filter(l => filter === 'ALL' || l.school === filter)
+  const [logoFile, setLogoFile] = useState<File | null>(null)
+  const [logoPreview, setLogoPreview] = useState<string | null>(null)
+  const [povFile, setPovFile] = useState<File | null>(null)
+  const [povPreview, setPovPreview] = useState<string | null>(null)
+  const logoRef = useRef<HTMLInputElement>(null)
+  const povRef = useRef<HTMLInputElement>(null)
 
   const fetchLocations = async () => {
     const supabase = createClient()
@@ -74,44 +58,37 @@ export default function AdminLocationsPage() {
     setLoading(false)
   }
 
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setPhotoFile(file)
-    const reader = new FileReader()
-    reader.onload = () => setPhotoPreview(reader.result as string)
-    reader.readAsDataURL(file)
-  }
-
-  const uploadPhoto = async (locationId: string): Promise<string | null> => {
-    if (!photoFile) return null
-    setUploading(true)
-    try {
-      const formData = new FormData()
-      formData.append('file', photoFile)
-      formData.append('locationId', locationId)
-
-      const res = await fetch('/api/upload-location-photo', {
-        method: 'POST',
-        body: formData,
+  useEffect(() => {
+    let mounted = true
+    const supabase = createClient()
+    supabase
+      .from('locations')
+      .select('*')
+      .order('school').order('office_name')
+      .then(({ data }) => {
+        if (mounted) {
+          setLocations(data || [])
+          setLoading(false)
+        }
       })
+    return () => { mounted = false }
+  }, [])
 
-      const result = await res.json()
-      if (result.error) {
-        console.error('Upload failed:', result.error)
-        setError(`Photo upload failed: ${result.error}`)
-        return null
-      }
+  const filtered = locations.filter(l => filter === 'ALL' || l.school === filter)
 
-      return result.photo_url
-    } catch (err) {
-      console.error('Photo upload failed:', err)
-      return null
-    } finally {
-      setUploading(false)
-    }
+
+
+  const uploadPhoto = async (locationId: string, file: File, photoType: 'logo' | 'pov'): Promise<void> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('locationId', locationId)
+    formData.append('photoType', photoType)
+    const res = await fetch('/api/upload-location-photo', {
+      method: 'POST',
+      body: formData,
+    })
+    const result = await res.json()
+    if (result.error) setError(`Photo upload failed: ${result.error}`)
   }
 
   const handleSave = async () => {
@@ -133,34 +110,21 @@ export default function AdminLocationsPage() {
       }
 
       if (editItem) {
-        // Update existing
         const { error: updateErr } = await supabase
-          .from('locations')
-          .update(payload)
-          .eq('id', editItem.id)
-
+          .from('locations').update(payload).eq('id', editItem.id)
         if (updateErr) throw updateErr
-
-        // Upload photo if new one selected
-        if (photoFile) {
-          await uploadPhoto(editItem.id)
-          // photo_url is saved inside uploadPhoto via API route
-        }
+        setUploading(true)
+        if (logoFile) await uploadPhoto(editItem.id, logoFile, 'logo')
+        if (povFile) await uploadPhoto(editItem.id, povFile, 'pov')
+        setUploading(false)
       } else {
-        // Insert new
         const { data: newLoc, error: insertErr } = await supabase
-          .from('locations')
-          .insert(payload)
-          .select()
-          .single()
-
+          .from('locations').insert(payload).select().single()
         if (insertErr) throw insertErr
-
-        // Upload photo for new location
-        if (photoFile && newLoc) {
-          await uploadPhoto(newLoc.id)
-          // photo_url is saved inside uploadPhoto via API route
-        }
+        setUploading(true)
+        if (logoFile && newLoc) await uploadPhoto(newLoc.id, logoFile, 'logo')
+        if (povFile && newLoc) await uploadPhoto(newLoc.id, povFile, 'pov')
+        setUploading(false)
       }
 
       setSuccess(editItem ? 'Location updated!' : 'Location added!')
@@ -168,8 +132,10 @@ export default function AdminLocationsPage() {
       setShowForm(false)
       setEditItem(null)
       setForm(emptyForm)
-      setPhotoFile(null)
-      setPhotoPreview(null)
+      setLogoFile(null)
+      setLogoPreview(null)
+      setPovFile(null)
+      setPovPreview(null)
       await fetchLocations()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save')
@@ -189,8 +155,10 @@ export default function AdminLocationsPage() {
       school: loc.school,
       description: loc.description || '',
     })
-    setPhotoFile(null)
-    setPhotoPreview(loc.photo_url || null)
+    setLogoFile(null)
+    setLogoPreview(loc.photo_url_logo || null)
+    setPovFile(null)
+    setPovPreview(loc.photo_url_pov || null)
     setError('')
     setShowForm(true)
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -207,8 +175,6 @@ export default function AdminLocationsPage() {
     setDeleting(false)
   }
 
-  const isISAP = (school: string) => school === 'ISAP'
-
   return (
     <div className="space-y-6">
 
@@ -217,7 +183,7 @@ export default function AdminLocationsPage() {
         <div>
           <h1 className="text-2xl font-bold" style={{ color: 'var(--text)' }}>Locations</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-            Manage campus offices and rooms with GPS coordinates and photos
+            Manage campus offices with GPS coordinates and photos
           </p>
         </div>
         <button
@@ -225,8 +191,6 @@ export default function AdminLocationsPage() {
             setShowForm(true)
             setEditItem(null)
             setForm(emptyForm)
-            setPhotoFile(null)
-            setPhotoPreview(null)
             setError('')
           }}
           className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-xl shrink-0"
@@ -237,7 +201,7 @@ export default function AdminLocationsPage() {
       </div>
 
       {/* Filter */}
-      <div className="flex gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         {(['ALL', 'ISAP', 'MCNP'] as const).map(f => (
           <button key={f} onClick={() => setFilter(f)}
             className="px-4 py-2 rounded-xl text-xs font-bold transition-all border"
@@ -247,16 +211,16 @@ export default function AdminLocationsPage() {
                 : 'var(--bg-card)',
               color: filter === f ? '#fff' : 'var(--text-muted)',
               borderColor: 'var(--border)',
-              }}>
-            {f === 'ALL' ? 'All' : f} {f !== 'ALL' && `(${locations.filter(l => l.school === f).length})`}
+            }}>
+            {f === 'ALL' ? 'All' : f}
           </button>
         ))}
-        <span className="ml-auto text-xs self-center" style={{ color: 'var(--text-faint)' }}>
+        <span className="text-xs ml-2" style={{ color: 'var(--text-faint)' }}>
           {filtered.length} locations
         </span>
       </div>
 
-      {/* Success / Error */}
+      {/* Success */}
       {success && (
         <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3">
           <Check size={14} className="text-emerald-600 shrink-0" />
@@ -277,125 +241,140 @@ export default function AdminLocationsPage() {
             </button>
           </div>
 
-          {/* Photo upload */}
-          <div>
-            <label className="block text-xs font-semibold mb-2" style={{ color: 'var(--text-muted)' }}>
-              Location Photo
-            </label>
-            <div
-              className="relative w-full h-40 rounded-xl border-2 border-dashed overflow-hidden flex items-center justify-center cursor-pointer transition-all hover:border-slate-400"
-              style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg)' }}
-              onClick={() => fileRef.current?.click()}
-            >
-              {photoPreview ? (
-                <>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
-                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-all">
-                    <p className="text-white text-xs font-bold">Click to change photo</p>
-                  </div>
-                </>
-              ) : (
-                <div className="flex flex-col items-center gap-2" style={{ color: 'var(--text-faint)' }}>
-                  <Image size={28} />
-                  <p className="text-xs font-semibold">Click to upload photo</p>
-                  <p className="text-[10px]">JPG, PNG up to 5MB</p>
-                </div>
-              )}
-            </div>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*"
-              onChange={handlePhotoChange}
-              style={{ display: 'none' }}
-            />
-            {photoFile && (
-              <p className="text-xs mt-1 text-emerald-600 font-semibold">
-                ✓ {photoFile.name} selected
-              </p>
-            )}
-          </div>
-
+          {/* Photo uploads — Logo + POV */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
-            {/* Office Name */}
+            {/* Logo / Room Sign */}
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>
+                📌 Logo / Room Sign Photo
+              </label>
+              <p className="text-[10px] mb-2" style={{ color: 'var(--text-faint)' }}>
+                Close-up of the office sign, door, or logo
+              </p>
+              <div
+                className="relative w-full h-32 rounded-xl border-2 border-dashed overflow-hidden flex items-center justify-center cursor-pointer"
+                style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg)' }}
+                onClick={() => logoRef.current?.click()}
+              >
+                {logoPreview ? (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={logoPreview} alt="Logo" className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-all">
+                      <p className="text-white text-[10px] font-bold">Change</p>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center gap-1" style={{ color: 'var(--text-faint)' }}>
+                    <span className="text-2xl">🪧</span>
+                    <p className="text-[10px] font-semibold">Upload sign photo</p>
+                  </div>
+                )}
+              </div>
+              <input ref={logoRef} type="file" accept="image/*"
+                onChange={e => {
+                  const f = e.target.files?.[0]
+                  if (!f) return
+                  setLogoFile(f)
+                  const r = new FileReader()
+                  r.onload = () => setLogoPreview(r.result as string)
+                  r.readAsDataURL(f)
+                }}
+                style={{ display: 'none' }} />
+              {logoFile && <p className="text-[10px] mt-1 text-emerald-600 font-semibold">✓ {logoFile.name}</p>}
+            </div>
+
+            {/* POV / Building Photo */}
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>
+                📷 Building / POV Photo
+              </label>
+              <p className="text-[10px] mb-2" style={{ color: 'var(--text-faint)' }}>
+                Street-view or building exterior photo
+              </p>
+              <div
+                className="relative w-full h-32 rounded-xl border-2 border-dashed overflow-hidden flex items-center justify-center cursor-pointer"
+                style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg)' }}
+                onClick={() => povRef.current?.click()}
+              >
+                {povPreview ? (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={povPreview} alt="POV" className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-all">
+                      <p className="text-white text-[10px] font-bold">Change</p>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center gap-1" style={{ color: 'var(--text-faint)' }}>
+                    <span className="text-2xl">🏛️</span>
+                    <p className="text-[10px] font-semibold">Upload building photo</p>
+                  </div>
+                )}
+              </div>
+              <input ref={povRef} type="file" accept="image/*"
+                onChange={e => {
+                  const f = e.target.files?.[0]
+                  if (!f) return
+                  setPovFile(f)
+                  const r = new FileReader()
+                  r.onload = () => setPovPreview(r.result as string)
+                  r.readAsDataURL(f)
+                }}
+                style={{ display: 'none' }} />
+              {povFile && <p className="text-[10px] mt-1 text-emerald-600 font-semibold">✓ {povFile.name}</p>}
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
               <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Office Name *</label>
-              <input
-                value={form.office_name}
-                onChange={e => setForm({ ...form, office_name: e.target.value })}
+              <input value={form.office_name} onChange={e => setForm({ ...form, office_name: e.target.value })}
                 placeholder="e.g. Registrar Office"
                 className="w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none"
-                style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-              />
+                style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }} />
             </div>
 
-            {/* Building */}
             <div>
               <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Building</label>
-              <input
-                value={form.building}
-                onChange={e => setForm({ ...form, building: e.target.value })}
+              <input value={form.building} onChange={e => setForm({ ...form, building: e.target.value })}
                 placeholder="e.g. Administration Building"
                 className="w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none"
-                style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-              />
+                style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }} />
             </div>
 
-            {/* Room */}
             <div>
               <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Room</label>
-              <input
-                value={form.room}
-                onChange={e => setForm({ ...form, room: e.target.value })}
+              <input value={form.room} onChange={e => setForm({ ...form, room: e.target.value })}
                 placeholder="e.g. Room 101"
                 className="w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none"
-                style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-              />
+                style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }} />
             </div>
 
-            {/* Description */}
             <div className="sm:col-span-2">
               <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Description</label>
-              <input
-                value={form.description}
-                onChange={e => setForm({ ...form, description: e.target.value })}
-                placeholder="e.g. Handles enrollment, records, and document requests"
+              <input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
+                placeholder="e.g. Handles enrollment, records, and documents"
                 className="w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none"
-                style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-              />
+                style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }} />
             </div>
 
-            {/* Latitude */}
             <div>
               <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Latitude *</label>
-              <input
-                value={form.latitude}
-                onChange={e => setForm({ ...form, latitude: e.target.value })}
-                placeholder="e.g. 17.64272"
-                type="number"
-                step="any"
+              <input value={form.latitude} onChange={e => setForm({ ...form, latitude: e.target.value })}
+                placeholder="e.g. 17.64272" type="number" step="any"
                 className="w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none font-mono"
-                style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-              />
+                style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }} />
             </div>
 
-            {/* Longitude */}
             <div>
               <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Longitude *</label>
-              <input
-                value={form.longitude}
-                onChange={e => setForm({ ...form, longitude: e.target.value })}
-                placeholder="e.g. 121.76166"
-                type="number"
-                step="any"
+              <input value={form.longitude} onChange={e => setForm({ ...form, longitude: e.target.value })}
+                placeholder="e.g. 121.76166" type="number" step="any"
                 className="w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none font-mono"
-                style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-              />
+                style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }} />
             </div>
 
-            {/* School */}
             <div className="sm:col-span-2">
               <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>School</label>
               <div className="flex gap-2">
@@ -422,22 +401,17 @@ export default function AdminLocationsPage() {
           )}
 
           <div className="flex items-center gap-3">
-            <button
-              onClick={handleSave}
-              disabled={saving || uploading}
-              className="flex items-center gap-2 px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-semibold rounded-xl disabled:opacity-50"
-            >
+            <button onClick={handleSave} disabled={saving || uploading}
+              className="flex items-center gap-2 px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-semibold rounded-xl disabled:opacity-50">
               {(saving || uploading)
                 ? <Loader2 size={15} className="animate-spin" />
                 : <Check size={15} />
               }
-              {uploading ? 'Uploading photo...' : saving ? 'Saving...' : editItem ? 'Save Changes' : 'Add Location'}
+              {uploading ? 'Uploading...' : saving ? 'Saving...' : editItem ? 'Save Changes' : 'Add Location'}
             </button>
-            <button
-              onClick={() => { setShowForm(false); setEditItem(null); setError('') }}
+            <button onClick={() => { setShowForm(false); setEditItem(null); setError('') }}
               className="px-5 py-2.5 rounded-xl border text-sm font-semibold"
-              style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
-            >
+              style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
               Cancel
             </button>
           </div>
@@ -453,6 +427,7 @@ export default function AdminLocationsPage() {
         <div className="rounded-2xl border p-10 text-center" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
           <MapPin size={28} className="mx-auto mb-2" style={{ color: 'var(--text-faint)' }} />
           <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>No locations found</p>
+          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Add your first location above</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -462,28 +437,24 @@ export default function AdminLocationsPage() {
 
               {/* Photo */}
               <div className="h-40 w-full relative overflow-hidden"
-                style={{ backgroundColor: isISAP(loc.school) ? '#fee2e2' : '#dbeafe' }}>
+                style={{ backgroundColor: loc.school === 'ISAP' ? '#fee2e2' : '#dbeafe' }}>
                 {loc.photo_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={`${loc.photo_url}?t=${new Date().getTime()}`}
+                    src={loc.photo_url}
                     alt={loc.office_name}
                     className="w-full h-full object-cover"
-                    onError={e => {
-                      e.currentTarget.style.display = 'none'
-                    }}
+                    onError={e => { e.currentTarget.style.display = 'none' }}
                   />
                 ) : (
                   <div className="flex flex-col items-center justify-center h-full gap-2"
-                    style={{ color: isISAP(loc.school) ? '#fca5a5' : '#93c5fd' }}>
-                    <Image size={28} />
+                    style={{ color: loc.school === 'ISAP' ? '#fca5a5' : '#93c5fd' }}>
+                    <span className="text-3xl">🖼️</span>
                     <p className="text-xs font-semibold">No photo</p>
                   </div>
                 )}
-
-                {/* School badge */}
                 <span className={`absolute top-2 right-2 text-xs font-bold px-2.5 py-1 rounded-full ${
-                  isISAP(loc.school) ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                  loc.school === 'ISAP' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
                 }`}>
                   {loc.school}
                 </span>
@@ -492,12 +463,8 @@ export default function AdminLocationsPage() {
               {/* Info */}
               <div className="p-4">
                 <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>{loc.office_name}</p>
-                {loc.building && (
-                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{loc.building}</p>
-                )}
-                {loc.room && (
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{loc.room}</p>
-                )}
+                {loc.building && <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{loc.building}</p>}
+                {loc.room && <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{loc.room}</p>}
                 {loc.description && (
                   <p className="text-xs mt-1 leading-relaxed" style={{ color: 'var(--text-faint)' }}>{loc.description}</p>
                 )}
@@ -510,40 +477,29 @@ export default function AdminLocationsPage() {
 
                 {/* Actions */}
                 <div className="flex items-center gap-2 mt-3 pt-3" style={{ borderTop: '1px solid var(--border)' }}>
-                  <button
-                    onClick={() => handleEdit(loc)}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-all hover:bg-black/5"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    <Pencil size={13} />
-                    Edit
+                  <button onClick={() => handleEdit(loc)}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold hover:bg-black/5"
+                    style={{ color: 'var(--text-muted)' }}>
+                    <Pencil size={13} />Edit
                   </button>
 
                   {deleteId === loc.id ? (
                     <div className="flex-1 flex items-center gap-2">
-                      <button
-                        onClick={() => handleDelete(loc.id)}
-                        disabled={deleting}
-                        className="flex-1 py-2 rounded-xl text-xs font-bold bg-red-600 text-white disabled:opacity-50"
-                      >
+                      <button onClick={() => handleDelete(loc.id)} disabled={deleting}
+                        className="flex-1 py-2 rounded-xl text-xs font-bold bg-red-600 text-white disabled:opacity-50">
                         {deleting ? '...' : 'Yes'}
                       </button>
-                      <button
-                        onClick={() => setDeleteId(null)}
+                      <button onClick={() => setDeleteId(null)}
                         className="flex-1 py-2 rounded-xl text-xs font-bold border"
-                        style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
-                      >
+                        style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
                         No
                       </button>
                     </div>
                   ) : (
-                    <button
-                      onClick={() => setDeleteId(loc.id)}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-all hover:bg-red-50 hover:text-red-600"
-                      style={{ color: 'var(--text-faint)' }}
-                    >
-                      <Trash2 size={13} />
-                      Delete
+                    <button onClick={() => setDeleteId(loc.id)}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold hover:bg-red-50 hover:text-red-600"
+                      style={{ color: 'var(--text-faint)' }}>
+                      <Trash2 size={13} />Delete
                     </button>
                   )}
                 </div>
@@ -554,4 +510,4 @@ export default function AdminLocationsPage() {
       )}
     </div>
   )
-}}
+}

@@ -16,9 +16,11 @@ type Location = {
 }
 
 type Props = {
-  locations: Location[]
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  locations: any[]
   selectedId?: string | null
-  onSelect?: (loc: Location) => void
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onSelect?: (loc: any) => void
 }
 
 function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
