@@ -9,18 +9,14 @@ MCNP VISION: Premier school in the country in allied health discipline producing
 MCNP MISSION: Holistic development of the person conscious of his eternal destiny.
 MCNP PURPOSE: "Caring for the Filipino and the People of the World"
 MCNP CORE VALUES: G-GODLINESS, N-NATIONALISM, T-TRUSTWORTHINESS, I-INDUSTRY, P-PATIENCE
-MCNP HYMN: With all the joys that crown the glorious strife Beloved MCNP you were born...
 
 ISAP VISION: Distinctive institution producing exceptionally-skilled and values-oriented professionals.
 ISAP MISSION: Holistic development of the person - socially responsible, virtuous and versatile.
 ISAP PURPOSE: "Transforming Lives through Selfless Service"
 ISAP CORE VALUES: I-INTEGRITY, S-SPIRITUAL UPRIGHTNESS, A-ALTRUISM, P-PATIENCE, I-INNOVATIVENESS, A-ADAPTIVENESS, N-NATIONALISM
-ISAP HYMN: International School of Asia and the Pacific your name we will uphold...
 
 FOUNDER: Dr. Ronald Pagela Guzman (medical doctor). Wife: Wilma Roa (nurse).
-Children (second generation): Dr. Christopher Mark R. Guzman (orthopedic surgeon), Dr. Charles Ronald R. Guzman (internist and lung specialist), Dr. Aileen (pediatrician), Atty. Cristina Guzman, Atty. Olivia Olalia-Guzman.
-
-DR. RONALD P. GUZMAN MEDICAL CENTER: 250-bed capacity tertiary hospital with MRI, CT scans, ultrasound, X-ray, dialysis. 150-bed PhilHealth department - first in Region 2.
+DR. RONALD P. GUZMAN MEDICAL CENTER: 250-bed capacity tertiary hospital with MRI, CT scans, ultrasound, X-ray, dialysis.
 `
 
 export async function POST(request: Request) {
@@ -36,7 +32,7 @@ export async function POST(request: Request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 
-    // ── Fetch Knowledge Base first ─────────────────────────────────────────
+    // ── Knowledge Base ─────────────────────────────────────────────────────
     const { data: knowledge } = await supabase
       .from('knowledge_base')
       .select('title, content, category')
@@ -46,112 +42,104 @@ export async function POST(request: Request) {
 
     let knowledgeContext = ''
     if (knowledge && knowledge.length > 0) {
-      knowledgeContext = '\n\nADMIN KNOWLEDGE BASE (use this information to answer questions):\n'
+      knowledgeContext = '\n\nCAMPUS KNOWLEDGE BASE:\n'
       for (const k of knowledge) {
         knowledgeContext += `\n[${k.category}] ${k.title}:\n${k.content}\n`
       }
     }
 
-    // ── Detect intent ──────────────────────────────────────────────────────
+    // ── Live campus data ───────────────────────────────────────────────────
     const msg = message.toLowerCase()
-    let intent = 'GENERAL'
-    if (msg.match(/where|location|office|room|building|find|direction/)) intent = 'LOCATION'
-    else if (msg.match(/tuition|fee|fees|cost|price|amount|pay|how much/)) intent = 'TUITION'
-    else if (msg.match(/course|program|degree|nursing|medtech|pharmacy|bsit|criminology|social work|computer engineering|physical therapy/)) intent = 'COURSES'
-    else if (msg.match(/enroll|enrollment|register|admission|requirement|apply/)) intent = 'ENROLLMENT'
-    else if (msg.match(/history|founded|founder|guzman|vision|mission|hymn|core values|philosophy|purpose|objective|outcome|graduate|attribute/)) intent = 'SCHOOL_INFO'
-
     let contextData = ''
 
-    if (intent === 'COURSES') {
-      const { data } = await supabase
-        .from('courses')
-        .select('name, description, duration, school, has_intersession')
-        .eq('school', school)
-        .order('name')
-      if (data?.length) {
-        contextData = `Courses offered by ${school}:\n`
-        for (const c of data) {
-          contextData += `- ${c.name} (${c.duration})${c.has_intersession ? ' - has intersession' : ''}: ${c.description}\n`
-        }
-      }
-    }
-
-    if (intent === 'TUITION') {
+    if (msg.match(/tuition|fee|fees|cost|price|amount|pay|how much/)) {
       const { data: tuition } = await supabase
         .from('tuition')
-        .select('year_level, semester, amount, course_id, school')
+        .select('year_level, semester, amount, course_id')
         .eq('school', school)
-        .order('year_level')
-        .order('semester')
+        .order('year_level').order('semester')
       const { data: courses } = await supabase
-        .from('courses')
-        .select('id, name')
-        .eq('school', school)
+        .from('courses').select('id, name').eq('school', school)
       const map: Record<string, string> = {}
       courses?.forEach(c => { map[c.id] = c.name })
       if (tuition?.length) {
-        contextData = `Tuition fees for ${school}:\n`
+        contextData += `Tuition fees for ${school}:\n`
         for (const t of tuition) {
           contextData += `- ${map[t.course_id] || 'Unknown'} | ${t.year_level} | ${t.semester}: ₱${Number(t.amount).toLocaleString()}\n`
         }
       }
     }
 
-    if (intent === 'LOCATION') {
+    if (msg.match(/course|program|degree|nursing|medtech|bsit|criminology|pharmacy|physical therapy/)) {
+      const { data } = await supabase
+        .from('courses')
+        .select('name, description, duration, has_intersession')
+        .eq('school', school).order('name')
+      if (data?.length) {
+        contextData += `\nCourses offered by ${school}:\n`
+        for (const c of data) {
+          contextData += `- ${c.name} (${c.duration})${c.has_intersession ? ' has intersession' : ''}: ${c.description}\n`
+        }
+      }
+    }
+
+    if (msg.match(/where|location|office|room|building|find/)) {
       const { data } = await supabase
         .from('locations')
-        .select('office_name, building, room, school')
-        .eq('school', school)
-        .order('office_name')
+        .select('office_name, building, room')
+        .eq('school', school).order('office_name')
       if (data?.length) {
-        contextData = `Office locations for ${school}:\n`
+        contextData += `\nOffice locations for ${school}:\n`
         for (const l of data) {
           contextData += `- ${l.office_name}: ${l.building}${l.room ? ', ' + l.room : ''}\n`
         }
       }
     }
 
-    if (intent === 'ENROLLMENT' || intent === 'GENERAL' || intent === 'SCHOOL_INFO') {
-      const { data } = await supabase
-        .from('faq')
-        .select('question, answer')
-        .or(`school.eq.${school},school.eq.BOTH`)
-        .order('category')
-      if (data?.length) {
-        contextData = `Campus FAQs:\n`
-        for (const f of data) {
-          contextData += `Q: ${f.question}\nA: ${f.answer}\n\n`
-        }
+    const { data: faqs } = await supabase
+      .from('faq').select('question, answer')
+      .or(`school.eq.${school},school.eq.BOTH`).order('category')
+    if (faqs?.length) {
+      contextData += `\nFAQs:\n`
+      for (const f of faqs) {
+        contextData += `Q: ${f.question}\nA: ${f.answer}\n\n`
       }
     }
 
-    // ── Build system prompt ────────────────────────────────────────────────
-    const systemPrompt = `You are a helpful AI assistant for the Smart Campus Help Desk serving ${school} students at ISAP and MCNP in Alimanao, Penablanca, Cagayan, Philippines.
+    // ── System prompt ──────────────────────────────────────────────────────
+    const systemPrompt = `You are a powerful AI assistant for the Smart Campus Help Desk of ${school} (ISAP and MCNP) in Alimanao, Penablanca, Cagayan, Philippines.
+
+You are like Gemini, ChatGPT, and Kimi combined — you can answer ANY question on ANY topic.
 
 SCHOOL INFORMATION:
 ${SCHOOL_INFO}
 ${knowledgeContext}
 ${contextData ? `\nLIVE CAMPUS DATA:\n${contextData}` : ''}
 
-RULES:
-- Always prioritize information from the ADMIN KNOWLEDGE BASE and campus data when answering school-related questions
-- You can also search the internet to answer ANY question the student asks — academic, general knowledge, current events, science, math, etc.
-- Be warm, friendly, and helpful like a real assistant
-- Always use ₱ for peso amounts when discussing school fees
-- Use bullet points and clear formatting for lists
-- Respond in the same language the student uses (English or Filipino/Tagalog)
-- If a student asks in Filipino, reply in Filipino
-- Answer ALL questions fully — never refuse to answer unless the topic is harmful
-- For school questions, use the knowledge base. For everything else, use your full knowledge and web search
-- Be like a smart friend who knows everything`
+YOUR CAPABILITIES:
+- Answer school questions using the campus data and knowledge base above
+- Answer ANY general knowledge question — science, math, history, technology, medicine, law, etc.
+- Search and use real-time information from the web when needed
+- Help students with homework, research, explanations, calculations
+- Write essays, letters, code, summaries, translations
+- Answer in English or Filipino depending on what the student uses
+- Be conversational, warm, and thorough like a real AI assistant
 
-    // ── Build conversation ─────────────────────────────────────────────────
+RULES:
+- For campus/school questions: always use the knowledge base and campus data first
+- For everything else: use your full knowledge + web search
+- Always use ₱ for peso amounts
+- Never refuse to answer unless the content is harmful or illegal
+- Give complete, detailed answers — don't cut yourself short
+- If asked in Filipino/Tagalog, respond in Filipino/Tagalog
+- Format answers clearly with headers, bullets, and numbered lists when helpful`
+
+    // ── Conversation history ───────────────────────────────────────────────
     const contents = [
       { role: 'user', parts: [{ text: systemPrompt }] },
       {
         role: 'model',
-        parts: [{ text: `Understood! I am the Smart Campus Help Desk AI for ${school}. How can I help you today?` }]
+        parts: [{ text: `Hello! I'm your Smart Campus AI Assistant for ${school}. I can help you with anything — campus questions, homework, general knowledge, or just a chat. What would you like to know?` }]
       },
       ...(conversationHistory || []).map((m: { role: string; content: string }) => ({
         role: m.role === 'model' ? 'model' : 'user',
@@ -160,44 +148,63 @@ RULES:
       { role: 'user', parts: [{ text: message }] }
     ]
 
-    // ── Call Gemini ────────────────────────────────────────────────────────
-    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash']
+    // ── Try models with Google Search grounding ────────────────────────────
+    const attempts = [
+      {
+        model: 'gemini-2.5-flash',
+        body: {
+          contents,
+          tools: [{ google_search: {} }],
+          generationConfig: { maxOutputTokens: 2048, temperature: 0.7 }
+        }
+      },
+      {
+        model: 'gemini-2.0-flash',
+        body: {
+          contents,
+          tools: [{ google_search: {} }],
+          generationConfig: { maxOutputTokens: 2048, temperature: 0.7 }
+        }
+      },
+      // Fallback without search
+      {
+        model: 'gemini-2.0-flash',
+        body: {
+          contents,
+          generationConfig: { maxOutputTokens: 2048, temperature: 0.7 }
+        }
+      },
+    ]
+
     let response = ''
 
-    for (const model of modelsToTry) {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents,
-            tools: [
-              {
-                google_search: {}
-              }
-            ],
-            generationConfig: {
-              maxOutputTokens: 2000,
-              temperature: 0.7
-            }
-          })
+    for (const attempt of attempts) {
+      try {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${attempt.model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(attempt.body)
+          }
+        )
+
+        if (res.ok) {
+          const data = await res.json()
+          const parts = data?.candidates?.[0]?.content?.parts || []
+          response = parts
+            .filter((p: { text?: string }) => p.text)
+            .map((p: { text: string }) => p.text)
+            .join('')
+          if (response) break
         }
-      )
-      if (res.ok) {
-        const data = await res.json()
-        // Extract text from all parts (search results may split into multiple parts)
-        const parts = data?.candidates?.[0]?.content?.parts || []
-        response = parts
-          .filter((p: { text?: string }) => p.text)
-          .map((p: { text: string }) => p.text)
-          .join('')
-        if (response) break
+      } catch {
+        continue
       }
     }
 
     if (!response) {
-      return NextResponse.json({ error: 'AI unavailable' }, { status: 500 })
+      return NextResponse.json({ error: 'AI unavailable. Please try again.' }, { status: 500 })
     }
 
     return NextResponse.json({ response })
