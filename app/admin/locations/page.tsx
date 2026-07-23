@@ -138,7 +138,8 @@ export default function AdminLocationsPage() {
       setPovPreview(null)
       await fetchLocations()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save')
+      console.error('Save error:', err)
+      setError(err instanceof Error ? err.message : JSON.stringify(err))
     } finally {
       setSaving(false)
     }

@@ -46,16 +46,30 @@ export default function AdminAnnouncementsPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState('')
   const [adminName, setAdminName] = useState('')
+  const [courses, setCourses] = useState<{ id: string; name: string; school: string }[]>([])
 
   const fetchAnnouncements = async () => {
-    const supabase = createClient()
-    const { data } = await supabase
-      .from('announcements')
-      .select('*')
-      .order('created_at', { ascending: false })
-    setAnnouncements(data || [])
-    setLoading(false)
-  }
+  const supabase = createClient()
+
+  // Fetch announcements
+  const { data: announcementData } = await supabase
+    .from('announcements')
+    .select('*')
+    .order('created_at', { ascending: false })
+
+  setAnnouncements(announcementData || [])
+
+  // Fetch courses for dropdown
+  const { data: courseData } = await supabase
+    .from('courses')
+    .select('id, name, school')
+    .order('school')
+    .order('name')
+
+  setCourses(courseData || [])
+
+  setLoading(false)
+}
 
   useEffect(() => {
     const init = async () => {
@@ -257,27 +271,62 @@ export default function AdminAnnouncementsPage() {
 
               {/* School */}
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Send to</label>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>
+                  Send to
+                </label>
                 <div className="flex gap-2">
                   {(['BOTH', 'ISAP', 'MCNP'] as const).map(s => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setForm({ ...form, school: s })}
-                      className={`flex-1 py-2 rounded-xl border-2 text-xs font-bold transition-all ${
-                        form.school === s
-                          ? s === 'ISAP' ? 'border-red-400 bg-red-50 text-red-700'
-                            : s === 'MCNP' ? 'border-blue-400 bg-blue-50 text-blue-700'
-                            : 'border-slate-600 bg-slate-800 text-white'
-                          : 'border-slate-100 text-slate-500 hover:border-slate-200'
-                      }`}
-                    >
-                      {s}
+                    <button key={s} type="button"
+                      onClick={() => setForm({ ...form, school: s, course_target: 'ALL' })}
+                      className="flex-1 py-2.5 rounded-xl border-2 text-xs font-bold transition-all"
+                      style={{
+                        borderColor: form.school === s ? (s === 'ISAP' ? '#dc2626' : s === 'MCNP' ? '#2563eb' : '#1e293b') : 'var(--border)',
+                        backgroundColor: form.school === s ? (s === 'ISAP' ? '#fee2e2' : s === 'MCNP' ? '#dbeafe' : '#f1f5f9') : 'var(--bg)',
+                        color: form.school === s ? (s === 'ISAP' ? '#b91c1c' : s === 'MCNP' ? '#1d4ed8' : '#1e293b') : 'var(--text-muted)',
+                      }}>
+                      {s === 'BOTH' ? 'Both Schools' : s}
                     </button>
                   ))}
                 </div>
               </div>
 
+              {/* Target Course */}
+              <div>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>
+                  Target Course
+                  <span className="font-normal ml-1" style={{ color: 'var(--text-faint)' }}>
+                    (optional — leave All Students for everyone)
+                  </span>
+                </label>
+                <select
+                  value={form.course_target}
+                  onChange={e => setForm({ ...form, course_target: e.target.value })}
+                  className="w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none"
+                  style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                >
+                  <option value="ALL">All Students</option>
+                  {(form.school === 'ISAP' || form.school === 'BOTH') && (
+                    <optgroup label="── ISAP Courses ──">
+                      {courses
+                        .filter(c => c.school === 'ISAP')
+                        .map(c => (
+                          <option key={c.id} value={c.name}>{c.name}</option>
+                        ))
+                      }
+                    </optgroup>
+                  )}
+                  {(form.school === 'MCNP' || form.school === 'BOTH') && (
+                    <optgroup label="── MCNP Courses ──">
+                      {courses
+                        .filter(c => c.school === 'MCNP')
+                        .map(c => (
+                          <option key={c.id} value={c.name}>{c.name}</option>
+                        ))
+                      }
+                    </optgroup>
+                  )}
+                </select>
+              </div>
               {/* Expiry */}
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1.5">
@@ -442,34 +491,7 @@ export default function AdminAnnouncementsPage() {
           })}
         </div>
       )}
-      {/* Course Target */}
-              <div className="sm:col-span-3">
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                  Target Course <span className="font-normal text-slate-400">(optional — leave ALL for everyone)</span>
-                </label>
-                <select
-                  value={form.course_target}
-                  onChange={e => setForm({ ...form, course_target: e.target.value })}
-                  className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-slate-400 focus:outline-none"
-                  style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-                >
-                  <option value="ALL">All Students</option>
-                  <optgroup label="ISAP Courses">
-                    <option value="Bachelor of Science in Information Technology">BS Information Technology</option>
-                    <option value="Bachelor of Science in Computer Engineering">BS Computer Engineering</option>
-                    <option value="Bachelor of Science in Social Work">BS Social Work</option>
-                    <option value="Bachelor of Science in Criminology">BS Criminology</option>
-                    <option value="Bachelor of Science in Business Administration">BS Business Administration</option>
-                    <option value="Bachelor of Science in Accountancy">BS Accountancy</option>
-                  </optgroup>
-                  <optgroup label="MCNP Courses">
-                    <option value="Bachelor of Science in Nursing">BS Nursing</option>
-                    <option value="Bachelor of Science in Medical Technology">BS Medical Technology</option>
-                    <option value="Bachelor of Science in Pharmacy">BS Pharmacy</option>
-                    <option value="Bachelor of Science in Physical Therapy">BS Physical Therapy</option>
-                  </optgroup>
-                </select>
-              </div>
+      
     </div>
     
   )
