@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/src/lib/supabase/client'
 import {
   Plus, Pencil, Trash2, Check, X,
-  BookOpen, FileText, Upload, Eye, EyeOff, Loader2
+  BookOpen, FileText, Upload, Eye, EyeOff, Loader2, Globe
 } from 'lucide-react'
 
 type KnowledgeEntry = {
@@ -52,6 +52,9 @@ export default function KnowledgeBasePage() {
   const [filterCategory, setFilterCategory] = useState('ALL')
   const [importing, setImporting] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const [urlInput, setUrlInput] = useState('')
+  const [fetchingUrl, setFetchingUrl] = useState(false)
+  const [urlError, setUrlError] = useState('')
 
   const fetchEntries = async () => {
     const supabase = createClient()
@@ -93,6 +96,35 @@ export default function KnowledgeBasePage() {
     } finally {
       setImporting(false)
       if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  const handleUrlFetch = async () => {
+    if (!urlInput.trim()) return
+    setFetchingUrl(true)
+    setUrlError('')
+    try {
+      const res = await fetch('/api/fetch-url-content', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: urlInput.trim() }),
+      })
+      const result = await res.json()
+      if (result.error) {
+        setUrlError(result.error)
+        return
+      }
+      setForm(prev => ({
+        ...prev,
+        title: prev.title || result.title,
+        content: `Source: ${result.url}\n\n${result.content}`,
+      }))
+      setUrlInput('')
+      setUrlError('')
+    } catch (err) {
+      setUrlError('Failed to fetch URL. Make sure it is a public webpage.')
+    } finally {
+      setFetchingUrl(false)
     }
   }
 
@@ -245,7 +277,47 @@ export default function KnowledgeBasePage() {
               <X size={18} />
             </button>
           </div>
-
+          {/* URL import */}
+          <div>
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>
+              Import from website URL
+              <span className="font-normal ml-1" style={{ color: 'var(--text-faint)' }}>
+                Gemini will read the full page and extract all content
+              </span>
+            </label>
+            <div className="flex gap-2">
+              <input
+                value={urlInput}
+                onChange={e => setUrlInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleUrlFetch()}
+                placeholder="https://isap.edu.ph/enrollment or any public webpage"
+                className="flex-1 rounded-xl border px-4 py-2.5 text-sm focus:outline-none"
+                style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+              />
+              <button
+                onClick={handleUrlFetch}
+                disabled={fetchingUrl || !urlInput.trim()}
+                className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-xl disabled:opacity-50 shrink-0"
+              >
+                {fetchingUrl
+                  ? <><Loader2 size={13} className="animate-spin" />Reading...</>
+                  : <><Globe size={13} />Read Page</>
+                }
+              </button>
+            </div>
+            {fetchingUrl && (
+              <div className="mt-2 flex items-center gap-2 text-xs text-blue-600 font-semibold">
+                <Loader2 size={12} className="animate-spin" />
+                Gemini is reading and extracting all content from the page...
+              </div>
+            )}
+            {urlError && (
+              <p className="text-xs mt-1.5 text-red-500 font-semibold">{urlError}</p>
+            )}
+            <p className="text-[10px] mt-1.5" style={{ color: 'var(--text-faint)' }}>
+              💡 Works with any public webpage — school websites, DepEd pages, news articles, official announcements
+            </p>
+          </div>
           {/* File import */}
           <div>
             <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>
