@@ -283,7 +283,7 @@ export default function MapComponent({ locations, selectedId, onSelect }: Props)
           }}
         >
           {tracking ? '⏹ Stop GPS' : '📍 Track Me'}
-        </button>
+        </button>. 
       </div>
 
       {/* Distance + walk time indicator */}
