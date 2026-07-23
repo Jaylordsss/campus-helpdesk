@@ -1,19 +1,6 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import type { Map as LeafletMap } from 'leaflet'
-
-type Location = {
-  id: string
-  office_name: string
-  building: string
-  room: string
-  latitude: number
-  longitude: number
-  school: string
-  photo_url?: string | null
-  description?: string | null
-}
 
 type Props = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -21,6 +8,8 @@ type Props = {
   selectedId?: string | null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onSelect?: (loc: any) => void
+  trackingActive?: boolean
+  onTrackingUpdate?: (pos: { lat: number; lng: number } | null, distance: number | null) => void
 }
 
 function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -33,40 +22,29 @@ function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
-export default function MapComponent({ locations, selectedId, onSelect }: Props) {
-  const mapRef = useRef<LeafletMap | null>(null)
+function getBearing(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const dLon = (lon2 - lon1) * Math.PI / 180
+  const y = Math.sin(dLon) * Math.cos(lat2 * Math.PI / 180)
+  const x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
+    Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLon)
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360
+}
+
+export default function MapComponent({
+  locations, selectedId, onSelect, trackingActive = false, onTrackingUpdate
+}: Props) {
   const mapContainerRef = useRef<HTMLDivElement>(null)
+  const mapRef = useRef<import('leaflet').Map | null>(null)
+  const leafletRef = useRef<typeof import('leaflet') | null>(null)
   const userMarkerRef = useRef<import('leaflet').Marker | null>(null)
   const destMarkerRef = useRef<import('leaflet').Marker | null>(null)
   const lineRef = useRef<import('leaflet').Polyline | null>(null)
   const watchIdRef = useRef<number | null>(null)
-  const markersRef = useRef<Record<string, import('leaflet').Marker>>({})
-  const leafletRef = useRef<typeof import('leaflet') | null>(null)
   const userPosRef = useRef<{ lat: number; lng: number } | null>(null)
+  const markersRef = useRef<Record<string, import('leaflet').Marker>>({})
+  const [mapReady, setMapReady] = useState(false)
 
-  const [userPos, setUserPos] = useState<{ lat: number; lng: number } | null>(null)
-  const [distance, setDistance] = useState<number | null>(null)
-  const [tracking, setTracking] = useState(false)
-  const [gpsError, setGpsError] = useState('')
-
-  // ── Draw line from user to destination ─────────────────────────────────
-  const drawLine = useCallback((destLat: number, destLng: number) => {
-    if (!mapRef.current || !leafletRef.current) return
-    const L = leafletRef.current
-    const pos = userPosRef.current
-    if (!pos) return
-
-    lineRef.current?.remove()
-    lineRef.current = L.polyline(
-      [[pos.lat, pos.lng], [destLat, destLng]],
-      { color: '#10b981', weight: 3, dashArray: '8, 8', opacity: 0.8 }
-    ).addTo(mapRef.current)
-
-    const dist = haversineDistance(pos.lat, pos.lng, destLat, destLng)
-    setDistance(Math.round(dist))
-  }, [])
-
-  // ── Init map ─────────────────────────────────────────────────────────────
+  // ── Init map ────────────────────────────────────────────────────────────
   useEffect(() => {
     if (mapRef.current || !mapContainerRef.current) return
 
@@ -78,49 +56,19 @@ export default function MapComponent({ locations, selectedId, onSelect }: Props)
       const map = L.map(mapContainerRef.current!, {
         center: [17.6135, 121.7290],
         zoom: 17,
-        zoomControl: true,
-      })
+        zoomControl: false,
+        rotate: true,
+      } as import('leaflet').MapOptions)
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors'
+        attribution: '© OpenStreetMap'
       }).addTo(map)
 
+      // Custom zoom control — top right
+      L.control.zoom({ position: 'topright' }).addTo(map)
+
       mapRef.current = map
-
-      locations.forEach(loc => {
-        if (!loc.latitude || !loc.longitude) return
-        const isISAP = loc.school === 'ISAP'
-        const color = isISAP ? '#dc2626' : '#2563eb'
-
-        const icon = L.divIcon({
-          html: `
-            <div style="
-              width:36px;height:36px;border-radius:50% 50% 50% 0;
-              background:${color};transform:rotate(-45deg);
-              border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);
-              display:flex;align-items:center;justify-content:center;
-            ">
-              <div style="transform:rotate(45deg);color:white;font-size:14px;">📍</div>
-            </div>
-          `,
-          iconSize: [36, 36],
-          iconAnchor: [18, 36],
-          className: '',
-        })
-
-        const marker = L.marker([loc.latitude, loc.longitude], { icon })
-          .addTo(map)
-          .on('click', () => onSelect?.(loc))
-
-        marker.bindTooltip(loc.office_name, {
-          permanent: false,
-          direction: 'top',
-          offset: [0, -36],
-          className: 'custom-tooltip',
-        })
-
-        markersRef.current[loc.id] = marker
-      })
+      setMapReady(true)
     }
 
     initMap()
@@ -133,200 +81,225 @@ export default function MapComponent({ locations, selectedId, onSelect }: Props)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ── When selectedId changes ───────────────────────────────────────────────
+  // ── Add location markers when map ready ─────────────────────────────────
   useEffect(() => {
+    if (!mapReady || !mapRef.current || !leafletRef.current) return
+    const L = leafletRef.current
+
+    // Clear old markers
+    Object.values(markersRef.current).forEach(m => m.remove())
+    markersRef.current = {}
+
+    locations.forEach(loc => {
+      if (!loc.latitude || !loc.longitude) return
+      const isISAP = loc.school === 'ISAP'
+      const color = isISAP ? '#dc2626' : '#2563eb'
+
+      const icon = L.divIcon({
+        html: `
+          <div style="
+            width:32px;height:32px;
+            border-radius:50% 50% 50% 0;
+            background:${color};
+            transform:rotate(-45deg);
+            border:2px solid white;
+            box-shadow:0 2px 6px rgba(0,0,0,0.3);
+          ">
+            <div style="transform:rotate(45deg);display:flex;align-items:center;justify-content:center;height:100%;color:white;font-size:12px;">📍</div>
+          </div>
+        `,
+        iconSize: [32, 32],
+        iconAnchor: [16, 32],
+        className: '',
+      })
+
+      const marker = L.marker([loc.latitude, loc.longitude], { icon })
+        .addTo(mapRef.current!)
+        .on('click', () => onSelect?.(loc))
+
+      marker.bindTooltip(loc.office_name, {
+        permanent: false,
+        direction: 'top',
+        offset: [0, -32],
+      })
+
+      markersRef.current[loc.id] = marker
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady, locations])
+
+  // ── Draw line + destination marker ──────────────────────────────────────
+  const drawRouteToDestination = useCallback((destLat: number, destLng: number) => {
     if (!mapRef.current || !leafletRef.current) return
     const L = leafletRef.current
-    const loc = locations.find(l => l.id === selectedId)
-    if (!loc?.latitude || !loc?.longitude) return
 
-    mapRef.current.flyTo([loc.latitude, loc.longitude], 18, { duration: 1 })
-
+    lineRef.current?.remove()
     destMarkerRef.current?.remove()
 
+    // Destination marker
     const destIcon = L.divIcon({
       html: `
-        <div style="position:relative;width:48px;height:48px;">
-          <div style="
-            position:absolute;inset:0;border-radius:50%;
-            background:rgba(16,185,129,0.3);
-            animation:pulse 1.5s ease-in-out infinite;
-          "></div>
-          <div style="
-            position:absolute;inset:8px;border-radius:50%;
-            background:#10b981;border:3px solid white;
-            display:flex;align-items:center;justify-content:center;
-            color:white;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,0.3);
-          ">🏁</div>
+        <div style="position:relative;width:44px;height:44px;">
+          <div style="position:absolute;inset:0;border-radius:50%;background:rgba(16,185,129,0.25);animation:pulse 1.5s infinite;"></div>
+          <div style="position:absolute;inset:8px;border-radius:50%;background:#10b981;border:3px solid white;display:flex;align-items:center;justify-content:center;color:white;font-size:13px;box-shadow:0 2px 6px rgba(0,0,0,0.3);">🏁</div>
         </div>
-        <style>@keyframes pulse{0%,100%{transform:scale(1);opacity:0.6}50%{transform:scale(1.4);opacity:0.2}}</style>
+        <style>@keyframes pulse{0%,100%{transform:scale(1);opacity:0.6}50%{transform:scale(1.4);opacity:0.1}}</style>
       `,
-      iconSize: [48, 48],
-      iconAnchor: [24, 24],
+      iconSize: [44, 44],
+      iconAnchor: [22, 22],
       className: '',
     })
 
-    destMarkerRef.current = L.marker([loc.latitude, loc.longitude], { icon: destIcon })
-      .addTo(mapRef.current)
+    destMarkerRef.current = L.marker([destLat, destLng], { icon: destIcon }).addTo(mapRef.current)
 
-    drawLine(loc.latitude, loc.longitude)
-  }, [selectedId, locations, drawLine])
+    // Draw dashed line if user pos known
+    const pos = userPosRef.current
+    if (pos) {
+      lineRef.current = L.polyline(
+        [[pos.lat, pos.lng], [destLat, destLng]],
+        { color: '#10b981', weight: 4, dashArray: '10, 8', opacity: 0.85 }
+      ).addTo(mapRef.current)
 
-  // ── Start GPS tracking ────────────────────────────────────────────────────
-  const startTracking = async () => {
-    if (!navigator.geolocation) {
-      setGpsError('GPS not supported on this device')
+      const dist = haversineDistance(pos.lat, pos.lng, destLat, destLng)
+      onTrackingUpdate?.(pos, Math.round(dist))
+
+      // Rotate map to face destination
+      const bearing = getBearing(pos.lat, pos.lng, destLat, destLng)
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const m = mapRef.current as any
+        if (typeof m.setBearing === 'function') {
+          m.setBearing(bearing)
+        } else {
+          // Fallback: rotate map container
+          const container = mapRef.current.getContainer()
+          container.style.transform = `rotate(${-bearing}deg)`
+          container.style.transition = 'transform 0.5s ease'
+        }
+      } catch {
+        // ignore
+      }
+
+      // Fit bounds to show both user and destination
+      const bounds = L.latLngBounds([[pos.lat, pos.lng], [destLat, destLng]])
+      mapRef.current.fitBounds(bounds, { padding: [60, 60] })
+    } else {
+      mapRef.current.flyTo([destLat, destLng], 18, { duration: 1 })
+    }
+  }, [onTrackingUpdate])
+
+  // ── When selectedId changes ───────────────────────────────────────────────
+  useEffect(() => {
+    if (!mapReady || !mapRef.current) return
+    const loc = locations.find((l: { id: string }) => l.id === selectedId)
+    if (!loc?.latitude || !loc?.longitude) {
+      destMarkerRef.current?.remove()
+      lineRef.current?.remove()
       return
     }
+    drawRouteToDestination(loc.latitude, loc.longitude)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, mapReady])
 
-    setTracking(true)
-    setGpsError('')
+  // ── GPS tracking ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!mapReady || !leafletRef.current) return
+    const L = leafletRef.current
 
-    const L = (await import('leaflet')).default
-    leafletRef.current = L
+    if (trackingActive) {
+      watchIdRef.current = navigator.geolocation.watchPosition(
+        (pos) => {
+          const { latitude, longitude } = pos.coords
+          const newPos = { lat: latitude, lng: longitude }
+          userPosRef.current = newPos
 
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      (pos) => {
-        const { latitude, longitude } = pos.coords
-        const newPos = { lat: latitude, lng: longitude }
-        userPosRef.current = newPos
-        setUserPos(newPos)
+          // Update user marker
+          userMarkerRef.current?.remove()
+          const userIcon = L.divIcon({
+            html: `
+              <div style="position:relative;width:36px;height:36px;">
+                <div style="position:absolute;inset:0;border-radius:50%;background:rgba(37,99,235,0.25);animation:userP 1.5s infinite;"></div>
+                <div style="position:absolute;inset:5px;border-radius:50%;background:#2563eb;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;color:white;font-size:11px;">👤</div>
+              </div>
+              <style>@keyframes userP{0%,100%{transform:scale(1);opacity:0.5}50%{transform:scale(1.6);opacity:0.1}}</style>
+            `,
+            iconSize: [36, 36],
+            iconAnchor: [18, 18],
+            className: '',
+          })
+          userMarkerRef.current = L.marker([latitude, longitude], { icon: userIcon })
+            .addTo(mapRef.current!)
+            .bindTooltip('You are here', { direction: 'top' })
 
-        userMarkerRef.current?.remove()
+          // Update route to selected destination
+          const selLoc = locations.find((l: { id: string }) => l.id === selectedId)
+          if (selLoc?.latitude && selLoc?.longitude) {
+            lineRef.current?.remove()
+            lineRef.current = L.polyline(
+              [[latitude, longitude], [selLoc.latitude, selLoc.longitude]],
+              { color: '#10b981', weight: 4, dashArray: '10, 8', opacity: 0.85 }
+            ).addTo(mapRef.current!)
 
-        const userIcon = L.divIcon({
-          html: `
-            <div style="position:relative;width:40px;height:40px;">
-              <div style="
-                position:absolute;inset:0;border-radius:50%;
-                background:rgba(59,130,246,0.3);
-                animation:userPulse 1.5s ease-in-out infinite;
-              "></div>
-              <div style="
-                position:absolute;inset:6px;border-radius:50%;
-                background:#2563eb;border:3px solid white;
-                box-shadow:0 2px 8px rgba(0,0,0,0.4);
-                display:flex;align-items:center;justify-content:center;
-                color:white;font-size:12px;
-              ">👤</div>
-            </div>
-            <style>@keyframes userPulse{0%,100%{transform:scale(1);opacity:0.5}50%{transform:scale(1.5);opacity:0.1}}</style>
-          `,
-          iconSize: [40, 40],
-          iconAnchor: [20, 20],
-          className: '',
-        })
+            const dist = haversineDistance(latitude, longitude, selLoc.latitude, selLoc.longitude)
+            onTrackingUpdate?.(newPos, Math.round(dist))
 
-        userMarkerRef.current = L.marker([latitude, longitude], { icon: userIcon })
-          .addTo(mapRef.current!)
-          .bindTooltip('You are here', { permanent: false, direction: 'top' })
+            // Rotate map toward destination
+            const bearing = getBearing(latitude, longitude, selLoc.latitude, selLoc.longitude)
+            try {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const m = mapRef.current as any
+              if (typeof m.setBearing === 'function') {
+                m.setBearing(bearing)
+              } else {
+                const container = mapRef.current!.getContainer()
+                container.style.transform = `rotate(${-bearing}deg)`
+                container.style.transition = 'transform 0.8s ease'
+              }
+            } catch { /* ignore */ }
 
-        // Update line + distance to selected destination
-        const selectedLoc = locations.find(l => l.id === selectedId)
-        if (selectedLoc?.latitude && selectedLoc?.longitude) {
-          lineRef.current?.remove()
-          lineRef.current = L.polyline(
-            [[latitude, longitude], [selectedLoc.latitude, selectedLoc.longitude]],
-            { color: '#10b981', weight: 3, dashArray: '8, 8', opacity: 0.8 }
-          ).addTo(mapRef.current!)
+            // Keep both in view
+            const bounds = L.latLngBounds([[latitude, longitude], [selLoc.latitude, selLoc.longitude]])
+            mapRef.current!.fitBounds(bounds, { padding: [60, 60] })
+          } else {
+            onTrackingUpdate?.(newPos, null)
+            mapRef.current!.flyTo([latitude, longitude], 18)
+          }
+        },
+        (err) => { console.error('GPS error:', err) },
+        { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
+      )
+    } else {
+      // Stop tracking
+      if (watchIdRef.current) {
+        navigator.geolocation.clearWatch(watchIdRef.current)
+        watchIdRef.current = null
+      }
+      userMarkerRef.current?.remove()
+      userMarkerRef.current = null
+      lineRef.current?.remove()
+      lineRef.current = null
+      userPosRef.current = null
+      onTrackingUpdate?.(null, null)
 
-          const dist = haversineDistance(latitude, longitude, selectedLoc.latitude, selectedLoc.longitude)
-          setDistance(Math.round(dist))
-        }
-      },
-      (err) => {
-        setGpsError('Could not get your location. Please allow location access.')
-        setTracking(false)
-        console.error(err)
-      },
-      { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
-    )
-  }
-
-  const stopTracking = () => {
-    if (watchIdRef.current) {
-      navigator.geolocation.clearWatch(watchIdRef.current)
-      watchIdRef.current = null
+      // Reset map rotation
+      try {
+        const container = mapRef.current?.getContainer()
+        if (container) container.style.transform = 'rotate(0deg)'
+      } catch { /* ignore */ }
     }
-    userMarkerRef.current?.remove()
-    userMarkerRef.current = null
-    lineRef.current?.remove()
-    lineRef.current = null
-    userPosRef.current = null
-    setUserPos(null)
-    setDistance(null)
-    setTracking(false)
-  }
 
-  const formatDistance = (meters: number) => {
-    if (meters < 1000) return `${meters} m`
-    return `${(meters / 1000).toFixed(1)} km`
-  }
-
-  const formatWalkTime = (meters: number) => {
-    const minutes = Math.round(meters / 80)
-    if (minutes < 1) return 'Less than 1 min'
-    if (minutes === 1) return '~1 min walk'
-    return `~${minutes} min walk`
-  }
+    return () => {
+      if (watchIdRef.current && !trackingActive) {
+        navigator.geolocation.clearWatch(watchIdRef.current)
+        watchIdRef.current = null
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trackingActive, mapReady, selectedId])
 
   return (
-    <div className="relative w-full h-full rounded-2xl overflow-hidden">
+    <div className="relative w-full h-full">
       <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
-
-      {/* GPS Controls */}
-      <div className="absolute top-3 right-3 z-[1000] flex flex-col gap-2">
-        <button
-          onClick={tracking ? stopTracking : startTracking}
-          className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold shadow-lg transition-all"
-          style={{
-            backgroundColor: tracking ? '#dc2626' : '#2563eb',
-            color: '#ffffff',
-          }}
-        >
-          {tracking ? '⏹ Stop GPS' : '📍 Track Me'}
-        </button>. 
-      </div>
-
-      {/* Distance + walk time indicator */}
-      {distance !== null && selectedId && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[1000]">
-          <div className="bg-white rounded-2xl shadow-xl px-5 py-3 flex items-center gap-4 border border-slate-100">
-            <div className="text-center">
-              <p className="text-xs text-slate-400 font-semibold">DISTANCE</p>
-              <p className="text-xl font-black text-slate-900">{formatDistance(distance)}</p>
-            </div>
-            <div className="w-px h-10 bg-slate-200" />
-            <div className="text-center">
-              <p className="text-xs text-slate-400 font-semibold">EST. WALK</p>
-              <p className="text-sm font-bold text-emerald-600">{formatWalkTime(distance)}</p>
-            </div>
-            {distance < 20 && (
-              <>
-                <div className="w-px h-10 bg-slate-200" />
-                <p className="text-sm font-bold text-emerald-600 animate-pulse">✅ You arrived!</p>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* GPS error */}
-      {gpsError && (
-        <div className="absolute top-14 right-3 z-[1000] bg-red-50 border border-red-200 rounded-xl px-3 py-2 max-w-[200px]">
-          <p className="text-xs text-red-600 font-semibold">{gpsError}</p>
-        </div>
-      )}
-
-      {/* GPS active indicator */}
-      {tracking && !gpsError && (
-        <div className="absolute top-14 right-3 z-[1000] bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">
-          <div className="flex items-center gap-1.5">
-            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-            <p className="text-xs text-emerald-700 font-semibold">GPS Active</p>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
