@@ -121,6 +121,9 @@ export default function AdminUsersPage() {
           school: form.school,
           student_id: form.student_id.trim() || null,
           role: form.role,
+          course: form.role === 'student' ? form.course.trim() || null : null,
+          year_level: form.role === 'student' ? form.year_level : null,
+          office: form.role === 'admin' ? form.office : null,
         }
         if (form.role === 'student') {
           updateData.course = form.course.trim() || null
