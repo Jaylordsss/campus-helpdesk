@@ -554,4 +554,4 @@ export default function AdminLocationsPage() {
       )}
     </div>
   )
-}
+}}
