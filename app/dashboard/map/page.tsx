@@ -70,6 +70,13 @@ export default function MapPage() {
     setShowDetail(true)
     setDetailTab('pov')
     setDistance(null)
+    // Auto scroll to top so map + detail panel are visible
+    setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      // Also scroll the inner content div to top
+      const contentDiv = document.getElementById('map-content')
+      if (contentDiv) contentDiv.scrollTo({ top: 0, behavior: 'smooth' })
+    }, 50)
   }
 
   const handleDirections = async () => {
@@ -232,7 +239,7 @@ export default function MapPage() {
           </div>
 
           {/* Bottom content */}
-          <div className="flex-1 overflow-y-auto" style={{ backgroundColor: 'var(--bg)' }}>
+          <div id="map-content" className="flex-1 overflow-y-auto" style={{ backgroundColor: 'var(--bg)' }}>
 
             {/* Detail panel */}
             {showDetail && selected && (

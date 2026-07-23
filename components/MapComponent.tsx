@@ -33,6 +33,7 @@ function getBearing(lat1: number, lon1: number, lat2: number, lon2: number) {
 export default function MapComponent({
   locations, selectedId, onSelect, trackingActive = false, onTrackingUpdate
 }: Props) {
+  const outerRef = useRef<HTMLDivElement>(null)
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<import('leaflet').Map | null>(null)
   const leafletRef = useRef<typeof import('leaflet') | null>(null)
@@ -42,7 +43,24 @@ export default function MapComponent({
   const watchIdRef = useRef<number | null>(null)
   const userPosRef = useRef<{ lat: number; lng: number } | null>(null)
   const markersRef = useRef<Record<string, import('leaflet').Marker>>({})
+  const currentBearingRef = useRef<number>(0)
   const [mapReady, setMapReady] = useState(false)
+
+  // ── Apply rotation to inner map container only ───────────────────────────
+  const applyRotation = useCallback((bearing: number) => {
+    if (!mapContainerRef.current) return
+    currentBearingRef.current = bearing
+    mapContainerRef.current.style.transform = `rotate(${-bearing}deg)`
+    mapContainerRef.current.style.transition = 'transform 0.8s ease'
+    mapContainerRef.current.style.transformOrigin = 'center center'
+  }, [])
+
+  const resetRotation = useCallback(() => {
+    if (!mapContainerRef.current) return
+    currentBearingRef.current = 0
+    mapContainerRef.current.style.transform = 'rotate(0deg)'
+    mapContainerRef.current.style.transition = 'transform 0.8s ease'
+  }, [])
 
   // ── Init map ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -57,14 +75,12 @@ export default function MapComponent({
         center: [17.6135, 121.7290],
         zoom: 17,
         zoomControl: false,
-        rotate: true,
-      } as import('leaflet').MapOptions)
+      })
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap'
       }).addTo(map)
 
-      // Custom zoom control — top right
       L.control.zoom({ position: 'topright' }).addTo(map)
 
       mapRef.current = map
@@ -81,19 +97,17 @@ export default function MapComponent({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ── Add location markers when map ready ─────────────────────────────────
+  // ── Add markers when map ready ───────────────────────────────────────────
   useEffect(() => {
     if (!mapReady || !mapRef.current || !leafletRef.current) return
     const L = leafletRef.current
 
-    // Clear old markers
     Object.values(markersRef.current).forEach(m => m.remove())
     markersRef.current = {}
 
     locations.forEach(loc => {
       if (!loc.latitude || !loc.longitude) return
-      const isISAP = loc.school === 'ISAP'
-      const color = isISAP ? '#dc2626' : '#2563eb'
+      const color = loc.school === 'ISAP' ? '#dc2626' : '#2563eb'
 
       const icon = L.divIcon({
         html: `
@@ -104,8 +118,9 @@ export default function MapComponent({
             transform:rotate(-45deg);
             border:2px solid white;
             box-shadow:0 2px 6px rgba(0,0,0,0.3);
+            display:flex;align-items:center;justify-content:center;
           ">
-            <div style="transform:rotate(45deg);display:flex;align-items:center;justify-content:center;height:100%;color:white;font-size:12px;">📍</div>
+            <div style="transform:rotate(45deg);color:white;font-size:12px;">📍</div>
           </div>
         `,
         iconSize: [32, 32],
@@ -128,76 +143,56 @@ export default function MapComponent({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, locations])
 
-  // ── Draw line + destination marker ──────────────────────────────────────
-  const drawRouteToDestination = useCallback((destLat: number, destLng: number) => {
-    if (!mapRef.current || !leafletRef.current) return
+  // ── When selectedId changes ──────────────────────────────────────────────
+  useEffect(() => {
+    if (!mapReady || !mapRef.current || !leafletRef.current) return
     const L = leafletRef.current
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const loc = locations.find((l: any) => l.id === selectedId)
 
-    lineRef.current?.remove()
     destMarkerRef.current?.remove()
+    lineRef.current?.remove()
+
+    if (!loc?.latitude || !loc?.longitude) return
 
     // Destination marker
     const destIcon = L.divIcon({
       html: `
         <div style="position:relative;width:44px;height:44px;">
-          <div style="position:absolute;inset:0;border-radius:50%;background:rgba(16,185,129,0.25);animation:pulse 1.5s infinite;"></div>
+          <div style="position:absolute;inset:0;border-radius:50%;background:rgba(16,185,129,0.25);animation:destPulse 1.5s infinite;"></div>
           <div style="position:absolute;inset:8px;border-radius:50%;background:#10b981;border:3px solid white;display:flex;align-items:center;justify-content:center;color:white;font-size:13px;box-shadow:0 2px 6px rgba(0,0,0,0.3);">🏁</div>
         </div>
-        <style>@keyframes pulse{0%,100%{transform:scale(1);opacity:0.6}50%{transform:scale(1.4);opacity:0.1}}</style>
+        <style>@keyframes destPulse{0%,100%{transform:scale(1);opacity:0.6}50%{transform:scale(1.4);opacity:0.1}}</style>
       `,
       iconSize: [44, 44],
       iconAnchor: [22, 22],
       className: '',
     })
 
-    destMarkerRef.current = L.marker([destLat, destLng], { icon: destIcon }).addTo(mapRef.current)
+    destMarkerRef.current = L.marker([loc.latitude, loc.longitude], { icon: destIcon })
+      .addTo(mapRef.current)
 
-    // Draw dashed line if user pos known
     const pos = userPosRef.current
     if (pos) {
+      // Draw line
       lineRef.current = L.polyline(
-        [[pos.lat, pos.lng], [destLat, destLng]],
-        { color: '#10b981', weight: 4, dashArray: '10, 8', opacity: 0.85 }
+        [[pos.lat, pos.lng], [loc.latitude, loc.longitude]],
+        { color: '#10b981', weight: 4, dashArray: '10,8', opacity: 0.85 }
       ).addTo(mapRef.current)
 
-      const dist = haversineDistance(pos.lat, pos.lng, destLat, destLng)
+      const dist = haversineDistance(pos.lat, pos.lng, loc.latitude, loc.longitude)
       onTrackingUpdate?.(pos, Math.round(dist))
 
       // Rotate map to face destination
-      const bearing = getBearing(pos.lat, pos.lng, destLat, destLng)
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const m = mapRef.current as any
-        if (typeof m.setBearing === 'function') {
-          m.setBearing(bearing)
-        } else {
-          // Fallback: rotate map container
-          const container = mapRef.current.getContainer()
-          container.style.transform = `rotate(${-bearing}deg)`
-          container.style.transition = 'transform 0.5s ease'
-        }
-      } catch {
-        // ignore
-      }
+      const bearing = getBearing(pos.lat, pos.lng, loc.latitude, loc.longitude)
+      applyRotation(bearing)
 
-      // Fit bounds to show both user and destination
-      const bounds = L.latLngBounds([[pos.lat, pos.lng], [destLat, destLng]])
-      mapRef.current.fitBounds(bounds, { padding: [60, 60] })
+      // Fit both in view
+      const bounds = L.latLngBounds([[pos.lat, pos.lng], [loc.latitude, loc.longitude]])
+      mapRef.current.fitBounds(bounds, { padding: [80, 80] })
     } else {
-      mapRef.current.flyTo([destLat, destLng], 18, { duration: 1 })
+      mapRef.current.flyTo([loc.latitude, loc.longitude], 18, { duration: 1 })
     }
-  }, [onTrackingUpdate])
-
-  // ── When selectedId changes ───────────────────────────────────────────────
-  useEffect(() => {
-    if (!mapReady || !mapRef.current) return
-    const loc = locations.find((l: { id: string }) => l.id === selectedId)
-    if (!loc?.latitude || !loc?.longitude) {
-      destMarkerRef.current?.remove()
-      lineRef.current?.remove()
-      return
-    }
-    drawRouteToDestination(loc.latitude, loc.longitude)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, mapReady])
 
@@ -213,8 +208,8 @@ export default function MapComponent({
           const newPos = { lat: latitude, lng: longitude }
           userPosRef.current = newPos
 
-          // Update user marker
           userMarkerRef.current?.remove()
+
           const userIcon = L.divIcon({
             html: `
               <div style="position:relative;width:36px;height:36px;">
@@ -227,39 +222,32 @@ export default function MapComponent({
             iconAnchor: [18, 18],
             className: '',
           })
+
           userMarkerRef.current = L.marker([latitude, longitude], { icon: userIcon })
             .addTo(mapRef.current!)
             .bindTooltip('You are here', { direction: 'top' })
 
-          // Update route to selected destination
-          const selLoc = locations.find((l: { id: string }) => l.id === selectedId)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const selLoc = locations.find((l: any) => l.id === selectedId)
           if (selLoc?.latitude && selLoc?.longitude) {
             lineRef.current?.remove()
             lineRef.current = L.polyline(
               [[latitude, longitude], [selLoc.latitude, selLoc.longitude]],
-              { color: '#10b981', weight: 4, dashArray: '10, 8', opacity: 0.85 }
+              { color: '#10b981', weight: 4, dashArray: '10,8', opacity: 0.85 }
             ).addTo(mapRef.current!)
 
             const dist = haversineDistance(latitude, longitude, selLoc.latitude, selLoc.longitude)
             onTrackingUpdate?.(newPos, Math.round(dist))
 
-            // Rotate map toward destination
+            // Rotate map to face destination from current position
             const bearing = getBearing(latitude, longitude, selLoc.latitude, selLoc.longitude)
-            try {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const m = mapRef.current as any
-              if (typeof m.setBearing === 'function') {
-                m.setBearing(bearing)
-              } else {
-                const container = mapRef.current!.getContainer()
-                container.style.transform = `rotate(${-bearing}deg)`
-                container.style.transition = 'transform 0.8s ease'
-              }
-            } catch { /* ignore */ }
+            applyRotation(bearing)
 
             // Keep both in view
-            const bounds = L.latLngBounds([[latitude, longitude], [selLoc.latitude, selLoc.longitude]])
-            mapRef.current!.fitBounds(bounds, { padding: [60, 60] })
+            const bounds = L.latLngBounds(
+              [[latitude, longitude], [selLoc.latitude, selLoc.longitude]]
+            )
+            mapRef.current!.fitBounds(bounds, { padding: [70, 70] })
           } else {
             onTrackingUpdate?.(newPos, null)
             mapRef.current!.flyTo([latitude, longitude], 18)
@@ -269,7 +257,6 @@ export default function MapComponent({
         { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
       )
     } else {
-      // Stop tracking
       if (watchIdRef.current) {
         navigator.geolocation.clearWatch(watchIdRef.current)
         watchIdRef.current = null
@@ -280,26 +267,42 @@ export default function MapComponent({
       lineRef.current = null
       userPosRef.current = null
       onTrackingUpdate?.(null, null)
-
-      // Reset map rotation
-      try {
-        const container = mapRef.current?.getContainer()
-        if (container) container.style.transform = 'rotate(0deg)'
-      } catch { /* ignore */ }
+      resetRotation()
     }
 
     return () => {
       if (watchIdRef.current && !trackingActive) {
         navigator.geolocation.clearWatch(watchIdRef.current)
-        watchIdRef.current = null
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackingActive, mapReady, selectedId])
 
   return (
-    <div className="relative w-full h-full">
-      <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
+    // Outer: clipping rectangle — always stays perfectly rectangular
+    <div
+      ref={outerRef}
+      style={{
+        width: '100%',
+        height: '100%',
+        overflow: 'hidden',
+        position: 'relative',
+        borderRadius: 'inherit',
+      }}
+    >
+      {/* Inner: oversized map div that rotates inside the clip */}
+      <div
+        ref={mapContainerRef}
+        style={{
+          position: 'absolute',
+          // Make it 40% bigger on each side so corners don't show when rotated
+          top: '-20%',
+          left: '-20%',
+          width: '140%',
+          height: '140%',
+          transformOrigin: 'center center',
+        }}
+      />
     </div>
   )
 }
