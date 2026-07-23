@@ -6,8 +6,8 @@ import { createClient } from '@/src/lib/supabase/client'
 import {
   LayoutDashboard, Users, BookOpen, CreditCard,
   MapPin, MessageSquare, Star, HelpCircle,
-  TrendingUp, LogOut, Menu, ShieldCheck, ChevronRight,
-  Megaphone, FileText
+  LogOut, Menu, ShieldCheck, ChevronRight,
+  Megaphone, FileText, Brain
 } from 'lucide-react'
 import NotificationBell from '@/components/NotificationBell'
 import ThemeToggle from '@/components/ThemeToggle'
@@ -24,7 +24,7 @@ const navItems = [
   { label: 'FAQs', href: '/admin/faq', icon: HelpCircle },
   { label: 'Inquiries', href: '/admin/inquiries', icon: MessageSquare },
   { label: 'Feedback', href: '/admin/feedback', icon: Star },
-  { label: 'Analytics', href: '/admin/analytics', icon: TrendingUp },
+  { label: 'Knowledge Base', href: '/admin/knowledge-base', icon: Brain },
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -44,7 +44,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       setAdminName(data.name)
     }
     getAdmin()
-  }, [])
+  }, [router])
 
   const handleLogout = async () => {
     const supabase = createClient()
