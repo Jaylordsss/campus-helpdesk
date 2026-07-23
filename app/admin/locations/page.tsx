@@ -64,6 +64,18 @@ export default function AdminLocationsPage() {
 
   const filtered = locations.filter(l => filter === 'ALL' || l.school === filter)
 
+  const fetchLocations = async () => {
+    const supabase = createClient()
+    const { data } = await supabase
+      .from('locations')
+      .select('*')
+      .order('school').order('office_name')
+    setLocations(data || [])
+    setLoading(false)
+  }
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
