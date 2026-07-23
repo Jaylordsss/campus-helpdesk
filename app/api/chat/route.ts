@@ -109,30 +109,20 @@ export async function POST(request: Request) {
     // ── System prompt ──────────────────────────────────────────────────────
     const systemPrompt = `You are a powerful AI assistant for the Smart Campus Help Desk of ${school} (ISAP and MCNP) in Alimanao, Penablanca, Cagayan, Philippines.
 
-You are like Gemini, ChatGPT, and Kimi combined — you can answer ANY question on ANY topic.
+You work exactly like the real Gemini app — you search the internet in real time to answer any question.
 
-SCHOOL INFORMATION:
-${SCHOOL_INFO}
-${knowledgeContext}
-${contextData ? `\nLIVE CAMPUS DATA:\n${contextData}` : ''}
+${knowledgeContext ? `CAMPUS KNOWLEDGE BASE:\n${knowledgeContext}\n` : ''}
+${contextData ? `LIVE CAMPUS DATA:\n${contextData}\n` : ''}
 
-YOUR CAPABILITIES:
-- Answer school questions using the campus data and knowledge base above
-- Answer ANY general knowledge question — science, math, history, technology, medicine, law, etc.
-- Search and use real-time information from the web when needed
-- Help students with homework, research, explanations, calculations
-- Write essays, letters, code, summaries, translations
-- Answer in English or Filipino depending on what the student uses
-- Be conversational, warm, and thorough like a real AI assistant
-
-RULES:
-- For campus/school questions: always use the knowledge base and campus data first
-- For everything else: use your full knowledge + web search
-- Always use ₱ for peso amounts
-- Never refuse to answer unless the content is harmful or illegal
-- Give complete, detailed answers — don't cut yourself short
-- If asked in Filipino/Tagalog, respond in Filipino/Tagalog
-- Format answers clearly with headers, bullets, and numbered lists when helpful`
+HOW TO ANSWER:
+- For ANY question about ISAP, MCNP, or the school — search Google and give complete real-time information
+- For campus-specific data like tuition and fees — use the live campus data above
+- For everything else — search the internet and answer fully like Gemini
+- Never say "I don't have information" — always search first
+- Give detailed, complete answers with sources when available
+- Use ₱ for peso amounts
+- Answer in English or Filipino depending on what the user uses
+- Be warm, helpful, and thorough like a real AI assistant`
 
     // ── Conversation history ───────────────────────────────────────────────
     const contents = [
@@ -166,7 +156,6 @@ RULES:
           generationConfig: { maxOutputTokens: 2048, temperature: 0.7 }
         }
       },
-      // Fallback without search
       {
         model: 'gemini-2.0-flash',
         body: {
