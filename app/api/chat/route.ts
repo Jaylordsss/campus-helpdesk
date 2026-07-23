@@ -135,14 +135,16 @@ ${knowledgeContext}
 ${contextData ? `\nLIVE CAMPUS DATA:\n${contextData}` : ''}
 
 RULES:
-- Always prioritize information from the ADMIN KNOWLEDGE BASE when answering questions
-- Be warm, friendly, and helpful
-- Always use ₱ for peso amounts
-- Use bullet points for lists
+- Always prioritize information from the ADMIN KNOWLEDGE BASE and campus data when answering school-related questions
+- You can also search the internet to answer ANY question the student asks — academic, general knowledge, current events, science, math, etc.
+- Be warm, friendly, and helpful like a real assistant
+- Always use ₱ for peso amounts when discussing school fees
+- Use bullet points and clear formatting for lists
 - Respond in the same language the student uses (English or Filipino/Tagalog)
 - If a student asks in Filipino, reply in Filipino
-- Never make up information not provided above
-- If you don't know the answer, suggest the student visit the relevant office or submit an inquiry through the Help Desk`
+- Answer ALL questions fully — never refuse to answer unless the topic is harmful
+- For school questions, use the knowledge base. For everything else, use your full knowledge and web search
+- Be like a smart friend who knows everything`
 
     // ── Build conversation ─────────────────────────────────────────────────
     const contents = [
@@ -159,7 +161,7 @@ RULES:
     ]
 
     // ── Call Gemini ────────────────────────────────────────────────────────
-    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash']
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash']
     let response = ''
 
     for (const model of modelsToTry) {
@@ -170,13 +172,26 @@ RULES:
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents,
-            generationConfig: { maxOutputTokens: 1000, temperature: 0.7 }
+            tools: [
+              {
+                google_search: {}
+              }
+            ],
+            generationConfig: {
+              maxOutputTokens: 2000,
+              temperature: 0.7
+            }
           })
         }
       )
       if (res.ok) {
         const data = await res.json()
-        response = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+        // Extract text from all parts (search results may split into multiple parts)
+        const parts = data?.candidates?.[0]?.content?.parts || []
+        response = parts
+          .filter((p: { text?: string }) => p.text)
+          .map((p: { text: string }) => p.text)
+          .join('')
         if (response) break
       }
     }
