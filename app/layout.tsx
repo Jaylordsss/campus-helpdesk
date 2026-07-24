@@ -26,7 +26,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning style={{ background: '#1e293b' }}>
       <head>
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
         <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
@@ -101,7 +101,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }
         `}</style>
       </head>
-      <body>
+      <body style={{ background: '#1e293b', margin: 0 }}>
         {/* PWA Splash Screen */}
         <div id="app-splash">
           <div className="logo">🎓</div>
