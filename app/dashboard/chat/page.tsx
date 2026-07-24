@@ -190,11 +190,13 @@ export default function ChatPage() {
       const response = await tryFetch()
       const finalMessages: Message[] = [...newMessages, { role: 'assistant', content: response }]
       setMessages(finalMessages)
-      await saveMessages(
-        sessionId,
-        finalMessages,
-        isFirstMessage ? userMessage : undefined
-      )
+      if (sessionId) {
+        await saveMessages(
+          sessionId,
+          finalMessages,
+          isFirstMessage ? userMessage : undefined
+        )
+      }
     } catch {
       try {
         const fallbackRes = await fetch('/api/chat', {
@@ -210,7 +212,7 @@ export default function ChatPage() {
         if (fallbackData.response) {
           const finalMessages: Message[] = [...newMessages, { role: 'assistant', content: fallbackData.response }]
           setMessages(finalMessages)
-          await saveMessages(sessionId, finalMessages, isFirstMessage ? userMessage : undefined)
+          if (sessionId) await saveMessages(sessionId, finalMessages, isFirstMessage ? userMessage : undefined)
         } else {
           setMessages(prev => [...prev, {
             role: 'assistant',
