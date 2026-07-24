@@ -186,9 +186,40 @@ HOW TO ANSWER:
             .map((p: { text: string }) => p.text)
             .join('')
           if (response) break
+        } else {
+          const errText = await res.text()
+          console.error(`Model ${attempt.model} failed:`, res.status, errText)
         }
-      } catch {
+      } catch (e) {
+        console.error(`Model ${attempt.model} error:`, e)
         continue
+      }
+    }
+
+    if (!response) {
+      // Try one more time with basic gemini without any tools
+      try {
+        const basicRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents,
+              generationConfig: { maxOutputTokens: 2048, temperature: 0.7 }
+            })
+          }
+        )
+        if (basicRes.ok) {
+          const basicData = await basicRes.json()
+          const parts = basicData?.candidates?.[0]?.content?.parts || []
+          response = parts
+            .filter((p: { text?: string }) => p.text)
+            .map((p: { text: string }) => p.text)
+            .join('')
+        }
+      } catch (e) {
+        console.error('Final fallback failed:', e)
       }
     }
 

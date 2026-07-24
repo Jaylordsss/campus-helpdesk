@@ -1,317 +1,328 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/src/lib/supabase/client'
-import { Send, Bot, User, Sparkles } from 'lucide-react'
+import { Send, Bot, User, Loader2, Trash2 } from 'lucide-react'
 
 type Message = {
-  id: string
-  role: 'user' | 'model'
+  role: 'user' | 'assistant'
   content: string
-  timestamp: Date
-}
-
-type Profile = { name: string; school: string }
-
-const quickQuestions = [
-  'How much is the tuition fee?',
-  'What courses are available?',
-  'Where is the Registrar Office?',
-  'How do I enroll?',
-  'Where is the Cashier Office?',
-  'What scholarships are available?',
-]
-
-function renderMessage(content: string, isISAP: boolean, isUser: boolean) {
-  const lines = content.split('\n')
-
-  return lines.map((line, i) => {
-    const trimmed = line.trim()
-
-    if (!trimmed) return <div key={i} className="h-1.5" />
-
-    if (trimmed.match(/^\d(st|nd|rd|th)\s+Year$/i)) {
-      return (
-        <p key={i} className={`text-xs font-bold uppercase tracking-widest mt-3 mb-1
-          ${isUser ? 'text-slate-300' : isISAP ? 'text-red-500' : 'text-blue-500'}`}>
-          {trimmed}
-        </p>
-      )
-    }
-
-    if ((trimmed.startsWith('-') || trimmed.startsWith('•')) && trimmed.includes(':')) {
-      const clean = trimmed.replace(/^[-•]\s*/, '')
-      const colonIndex = clean.indexOf(':')
-      const label = clean.substring(0, colonIndex).trim()
-      const value = clean.substring(colonIndex + 1).trim()
-
-      if (label && value) {
-        return (
-          <div key={i} className={`flex items-center justify-between py-1.5 border-b last:border-0
-            ${isUser ? 'border-slate-600' : 'border-slate-100'}`}>
-            <span className={`text-xs ${isUser ? 'text-slate-300' : 'text-slate-500'}`}>
-              {label}
-            </span>
-            <span className={`text-xs font-bold ml-4 ${isUser ? 'text-white' : 'text-slate-800'}`}>
-              {value}
-            </span>
-          </div>
-        )
-      }
-    }
-
-    if (trimmed.startsWith('-') || trimmed.startsWith('•')) {
-      const clean = trimmed.replace(/^[-•]\s*/, '')
-      return (
-        <div key={i} className="flex items-start gap-2 py-0.5">
-          <span className={`mt-2 w-1.5 h-1.5 rounded-full shrink-0
-            ${isUser ? 'bg-slate-400' : isISAP ? 'bg-red-400' : 'bg-blue-400'}`}
-          />
-          <span className={`text-sm leading-relaxed ${isUser ? 'text-white' : 'text-slate-700'}`}>
-            {clean}
-          </span>
-        </div>
-      )
-    }
-
-    return (
-      <p key={i} className={`text-sm leading-relaxed ${isUser ? 'text-white' : 'text-slate-800'}`}>
-        {trimmed}
-      </p>
-    )
-  })
 }
 
 export default function ChatPage() {
-  const [profile, setProfile] = useState<Profile | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [profileLoading, setProfileLoading] = useState(true)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const [profile, setProfile] = useState<{ name: string; school: string } | null>(null)
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  const newId = () => crypto.randomUUID()
+  const isISAP = profile?.school === 'ISAP'
+  const accentColor = isISAP ? '#dc2626' : '#2563eb'
+  const accentBg = isISAP ? '#fee2e2' : '#dbeafe'
 
   useEffect(() => {
-    const getProfile = async () => {
+    const init = async () => {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
       const { data } = await supabase
-        .from('profiles').select('name, school').eq('id', user.id).single()
-      if (data) {
-        setProfile(data)
-        setMessages([{
-          id: 'welcome',
-          role: 'model',
-          content: `Hi ${data.name}!\n\nI am your Smart Campus Help Desk Assistant for ${
-            data.school === 'MCNP'
-              ? 'Medical Colleges of Northern Philippines'
-              : 'International School of Asia and the Pacific'
-          }.\n\nI can help you with:\n- Course and program information\n- Tuition fees per year level\n- Office locations and directions\n- Enrollment requirements\n- Scholarships and grants\n- General campus inquiries\n\nWhat can I help you with today?`,
-          timestamp: new Date()
-        }])
-      }
-      setProfileLoading(false)
+        .from('profiles')
+        .select('name, school')
+        .eq('id', user.id)
+        .single()
+      if (data) setProfile(data)
     }
-    getProfile()
+    init()
   }, [])
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, loading])
 
-  const sendMessage = async (text: string) => {
-    if (!text.trim() || loading || !profile) return
+  const sendMessage = async () => {
+    const userMessage = input.trim()
+    if (!userMessage || loading) return
 
-    const userMessage: Message = {
-      id: newId(),
-      role: 'user',
-      content: text.trim(),
-      timestamp: new Date()
-    }
-
-    setMessages(prev => [...prev, userMessage])
     setInput('')
+    setMessages(prev => [...prev, { role: 'user', content: userMessage }])
     setLoading(true)
 
-    try {
-      const conversationHistory = messages
-        .filter(m => m.id !== 'welcome')
-        .map(m => ({ role: m.role, content: m.content }))
+    const history = messages.map(m => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      content: m.content,
+    }))
 
+    const tryFetch = async (retryCount = 0): Promise<string> => {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: text.trim(),
-          school: profile.school,
-          conversationHistory
-        })
+          message: userMessage,
+          school: profile?.school || 'ISAP',
+          conversationHistory: history,
+        }),
       })
 
       const data = await res.json()
-      if (data.error) throw new Error(data.error)
 
-      const aiMessage: Message = {
-        id: newId(),
-        role: 'model',
-        content: data.response,
-        timestamp: new Date()
+      if (data.response) return data.response
+
+      if (retryCount < 2) {
+        await new Promise(r => setTimeout(r, 1000))
+        return tryFetch(retryCount + 1)
       }
 
-      setMessages(prev => [...prev, aiMessage])
-    } catch (err) {
-      const errorMessage: Message = {
-        id: newId(),
-        role: 'model',
-        content: 'Sorry, I encountered an error. Please try again in a moment.',
-        timestamp: new Date()
+      throw new Error(data.error || 'No response')
+    }
+
+    try {
+      const response = await tryFetch()
+      setMessages(prev => [...prev, { role: 'assistant', content: response }])
+    } catch {
+      // Final fallback — try one more time with a simpler request
+      try {
+        const fallbackRes = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: userMessage,
+            school: profile?.school || 'ISAP',
+            conversationHistory: [],
+          }),
+        })
+        const fallbackData = await fallbackRes.json()
+        if (fallbackData.response) {
+          setMessages(prev => [...prev, { role: 'assistant', content: fallbackData.response }])
+        } else {
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: 'I had a connection issue. Please resend your message and I\'ll answer right away!'
+          }])
+        }
+      } catch {
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: 'Connection issue. Please resend your message!'
+        }])
       }
-      setMessages(prev => [...prev, errorMessage])
     } finally {
       setLoading(false)
       inputRef.current?.focus()
     }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    sendMessage(input)
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      sendMessage()
+    }
   }
 
-  const isISAP = profile?.school === 'ISAP'
-  const accentBg = isISAP ? 'bg-red-500' : 'bg-blue-500'
-  const accentLight = isISAP ? 'bg-red-50 border-red-100' : 'bg-blue-50 border-blue-100'
-  const accentText = isISAP ? 'text-red-600' : 'text-blue-600'
-  const accentBtn = isISAP ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-500 hover:bg-blue-600'
-  const quickBtnClass = isISAP
-    ? 'bg-red-50 border border-red-100 text-red-700 hover:bg-red-100'
-    : 'bg-blue-50 border border-blue-100 text-blue-700 hover:bg-blue-100'
+  const clearChat = () => setMessages([])
 
-  if (profileLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="w-6 h-6 border-[3px] border-slate-200 border-t-slate-500 rounded-full animate-spin" />
-      </div>
-    )
+  const formatMessage = (content: string) => {
+    return content
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/`(.+?)`/g, '<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-family:monospace;font-size:12px;">$1</code>')
+      .replace(/^### (.+)$/gm, '<p style="font-weight:700;font-size:14px;margin:12px 0 4px;">$1</p>')
+      .replace(/^## (.+)$/gm, '<p style="font-weight:700;font-size:15px;margin:14px 0 6px;">$1</p>')
+      .replace(/^# (.+)$/gm, '<p style="font-weight:700;font-size:16px;margin:16px 0 8px;">$1</p>')
+      .replace(/^- (.+)$/gm, '<div style="display:flex;gap:8px;margin:3px 0;"><span>•</span><span>$1</span></div>')
+      .replace(/^\d+\. (.+)$/gm, (_, p1, offset, str) => {
+        const linesBefore = str.substring(0, offset).split('\n')
+        const num = linesBefore.filter((l: string) => /^\d+\./.test(l)).length + 1
+        return `<div style="display:flex;gap:8px;margin:3px 0;"><span style="min-width:16px;">${num}.</span><span>${p1}</span></div>`
+      })
+      .split('\n\n')
+      .map((para: string) => para.trim() ? `<p style="margin:8px 0;">${para}</p>` : '')
+      .join('')
   }
+
+  const SUGGESTED = [
+    'What courses does this school offer?',
+    'How much is the tuition fee?',
+    'What are the enrollment requirements?',
+    'Where is the Registrar Office?',
+  ]
 
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)] max-w-3xl mx-auto">
+    <div className="flex flex-col h-full max-w-4xl mx-auto" style={{ height: 'calc(100dvh - 56px)' }}>
 
       {/* Header */}
-      <div className={`rounded-2xl border p-4 mb-4 flex items-center gap-3 ${accentLight}`}>
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${accentBg}`}>
-          <Bot size={20} className="text-white" />
+      <div className="px-4 py-3 border-b flex items-center justify-between shrink-0"
+        style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+            style={{ backgroundColor: accentBg }}>
+            <Bot size={18} style={{ color: accentColor }} />
+          </div>
+          <div>
+            <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>
+              Campus AI Assistant
+            </p>
+            <p className="text-[10px]" style={{ color: 'var(--text-faint)' }}>
+              Powered by Gemini · Can answer anything
+            </p>
+          </div>
         </div>
-        <div>
-          <p className="text-sm font-bold text-slate-900">Campus AI Assistant</p>
-          <p className={`text-xs font-medium ${accentText}`}>
-            {profile?.school} · Powered by Gemini AI
-          </p>
-        </div>
-        <div className="ml-auto flex items-center gap-1.5">
-          <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-          <span className="text-xs text-slate-400 font-medium">Online</span>
-        </div>
+        {messages.length > 0 && (
+          <button
+            onClick={clearChat}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold hover:bg-black/5 transition-all"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            <Trash2 size={13} />
+            Clear
+          </button>
+        )}
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto space-y-4 pb-4 px-1">
-        {messages.map(message => (
-          <div
-            key={message.id}
-            className={`flex gap-3 ${message.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
-          >
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5
-              ${message.role === 'model' ? accentBg : 'bg-slate-700'}`}>
-              {message.role === 'model'
-                ? <Bot size={15} className="text-white" />
-                : <User size={15} className="text-white" />
-              }
-            </div>
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
 
-            <div className={`max-w-[78%] rounded-2xl px-4 py-3 space-y-0.5
-              ${message.role === 'model'
-                ? 'bg-white border border-slate-100 rounded-tl-sm shadow-sm'
-                : 'bg-slate-800 rounded-tr-sm'
-              }`}>
-              {renderMessage(message.content, isISAP, message.role === 'user')}
-              <p className={`text-[10px] mt-2 ${
-                message.role === 'model' ? 'text-slate-300' : 'text-slate-400'
-              }`}>
-                {message.timestamp.toLocaleTimeString('en-PH', {
-                  hour: '2-digit', minute: '2-digit'
-                })}
+        {/* Welcome */}
+        {messages.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-full gap-6 py-8">
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
+              style={{ backgroundColor: accentBg }}>
+              <Bot size={32} style={{ color: accentColor }} />
+            </div>
+            <div className="text-center">
+              <h2 className="text-xl font-bold mb-2" style={{ color: 'var(--text)' }}>
+                Hi {profile?.name?.split(' ')[0] || 'there'}! 👋
+              </h2>
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                I can answer anything — campus questions, homework, general knowledge, or just chat.
               </p>
             </div>
+
+            {/* Suggested questions */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-lg">
+              {SUGGESTED.map((q, i) => (
+                <button
+                  key={i}
+                  onClick={() => { setInput(q); inputRef.current?.focus() }}
+                  className="text-left px-4 py-3 rounded-2xl border text-xs font-semibold transition-all hover:shadow-sm"
+                  style={{
+                    backgroundColor: 'var(--bg-card)',
+                    borderColor: 'var(--border)',
+                    color: 'var(--text-muted)',
+                  }}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Message list */}
+        {messages.map((msg, i) => (
+          <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+
+            {/* AI avatar */}
+            {msg.role === 'assistant' && (
+              <div className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-1"
+                style={{ backgroundColor: accentBg }}>
+                <Bot size={14} style={{ color: accentColor }} />
+              </div>
+            )}
+
+            {/* Bubble */}
+            <div
+              className="max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed"
+              style={msg.role === 'user' ? {
+                backgroundColor: accentColor,
+                color: '#ffffff',
+                borderBottomRightRadius: '6px',
+              } : {
+                backgroundColor: 'var(--bg-card)',
+                color: 'var(--text)',
+                border: '1px solid var(--border)',
+                borderBottomLeftRadius: '6px',
+              }}
+            >
+              {msg.role === 'assistant' ? (
+                <div
+                  dangerouslySetInnerHTML={{ __html: formatMessage(msg.content) }}
+                  style={{ lineHeight: '1.6' }}
+                />
+              ) : (
+                <p style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</p>
+              )}
+            </div>
+
+            {/* User avatar */}
+            {msg.role === 'user' && (
+              <div className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-1 text-white text-xs font-bold"
+                style={{ backgroundColor: accentColor }}>
+                {profile?.name?.charAt(0)?.toUpperCase() || <User size={14} />}
+              </div>
+            )}
           </div>
         ))}
 
-        {/* Loading bubble */}
+        {/* Loading */}
         {loading && (
-          <div className="flex gap-3">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${accentBg}`}>
-              <Bot size={15} className="text-white" />
+          <div className="flex gap-3 justify-start">
+            <div className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0"
+              style={{ backgroundColor: accentBg }}>
+              <Bot size={14} style={{ color: accentColor }} />
             </div>
-            <div className="bg-white border border-slate-100 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm">
-              <div className="flex items-center gap-1.5">
-                <div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+            <div className="rounded-2xl px-4 py-3 border"
+              style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)', borderBottomLeftRadius: '6px' }}>
+              <div className="flex items-center gap-2">
+                <Loader2 size={14} className="animate-spin" style={{ color: accentColor }} />
+                <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Thinking...</span>
               </div>
             </div>
           </div>
         )}
 
-        <div ref={messagesEndRef} />
+        <div ref={bottomRef} />
       </div>
 
-      {/* Quick questions */}
-      {messages.length === 1 && (
-        <div className="mb-3">
-          <div className="flex items-center gap-1.5 mb-2">
-            <Sparkles size={12} className={accentText} />
-            <p className="text-xs font-semibold text-slate-400">Quick questions</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {quickQuestions.map(q => (
-              <button
-                key={q}
-                onClick={() => sendMessage(q)}
-                className={`text-xs font-medium px-3 py-1.5 rounded-xl transition-all ${quickBtnClass}`}
-              >
-                {q}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Input */}
-      <form
-        onSubmit={handleSubmit}
-        className="flex items-center gap-3 bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm"
-      >
-        <input
-          ref={inputRef}
-          type="text"
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          placeholder="Ask anything about campus..."
-          disabled={loading}
-          className="flex-1 text-sm text-slate-900 placeholder:text-slate-300 focus:outline-none disabled:opacity-50 bg-transparent"
-        />
-        <button
-          type="submit"
-          disabled={loading || !input.trim()}
-          className={`w-9 h-9 rounded-xl flex items-center justify-center text-white transition-all disabled:opacity-40 shrink-0 ${accentBtn}`}
-        >
-          <Send size={16} />
-        </button>
-      </form>
+      <div className="px-4 py-3 border-t shrink-0"
+        style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+        <div className="flex items-end gap-2 rounded-2xl border px-4 py-3"
+          style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)' }}>
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={e => {
+              setInput(e.target.value)
+              e.target.style.height = 'auto'
+              e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px'
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder="Ask me anything..."
+            rows={1}
+            className="flex-1 text-sm resize-none focus:outline-none bg-transparent"
+            style={{
+              color: 'var(--text)',
+              lineHeight: '1.5',
+              maxHeight: '120px',
+            }}
+          />
+          <button
+            onClick={sendMessage}
+            disabled={!input.trim() || loading}
+            className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-all disabled:opacity-40"
+            style={{ backgroundColor: accentColor }}
+          >
+            {loading
+              ? <Loader2 size={15} className="text-white animate-spin" />
+              : <Send size={15} className="text-white" />
+            }
+          </button>
+        </div>
+        <p className="text-[10px] text-center mt-2" style={{ color: 'var(--text-faint)' }}>
+          Press Enter to send · Shift+Enter for new line
+        </p>
+      </div>
     </div>
   )
 }
