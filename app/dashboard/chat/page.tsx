@@ -279,7 +279,7 @@ export default function ChatPage() {
   ]
 
   return (
-    <div className="flex overflow-hidden" style={{ height: 'calc(100dvh - 56px)' }}>
+    <div className="flex h-full overflow-hidden" style={{ height: 'calc(100dvh - 56px)' }}>
 
       {/* ── SIDEBAR ── */}
       <div
@@ -416,7 +416,7 @@ export default function ChatPage() {
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
 
         {/* Chat header */}
-        <div className="px-4 py-3 border-b flex items-center justify-between shrink-0 z-10"
+        <div className="px-4 py-3 border-b flex items-center justify-between shrink-0"
           style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
           <div className="flex items-center gap-3">
             {/* Sidebar toggle */}
