@@ -19,6 +19,46 @@ FOUNDER: Dr. Ronald Pagela Guzman (medical doctor). Wife: Wilma Roa (nurse).
 DR. RONALD P. GUZMAN MEDICAL CENTER: 250-bed capacity tertiary hospital with MRI, CT scans, ultrasound, X-ray, dialysis.
 `
 
+async function callGemini(
+  model: string,
+  contents: object[],
+  useSearch: boolean,
+  apiKey: string,
+  maxTokens = 2048
+): Promise<string> {
+  const body: Record<string, unknown> = {
+    contents,
+    generationConfig: { maxOutputTokens: maxTokens, temperature: 0.7 },
+  }
+  if (useSearch) {
+    body.tools = [{ google_search: {} }]
+  }
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }
+  )
+
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`${model} failed: ${res.status} ${err}`)
+  }
+
+  const data = await res.json()
+  const parts = data?.candidates?.[0]?.content?.parts || []
+  const text = parts
+    .filter((p: { text?: string }) => p.text)
+    .map((p: { text: string }) => p.text)
+    .join('')
+
+  if (!text) throw new Error(`${model} returned empty response`)
+  return text
+}
+
 export async function POST(request: Request) {
   try {
     const { message, school, conversationHistory } = await request.json()
@@ -27,12 +67,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'AI not configured' }, { status: 500 })
     }
 
+    const apiKey = process.env.GEMINI_API_KEY
+
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 
-    // ── Knowledge Base ─────────────────────────────────────────────────────
+    // ── 1. Knowledge Base ─────────────────────────────────────────────────
     const { data: knowledge } = await supabase
       .from('knowledge_base')
       .select('title, content, category')
@@ -48,7 +90,7 @@ export async function POST(request: Request) {
       }
     }
 
-    // ── Live campus data ───────────────────────────────────────────────────
+    // ── 2. Live campus data ───────────────────────────────────────────────
     const msg = message.toLowerCase()
     let contextData = ''
 
@@ -70,7 +112,7 @@ export async function POST(request: Request) {
       }
     }
 
-    if (msg.match(/course|program|degree|nursing|medtech|bsit|criminology|pharmacy|physical therapy/)) {
+    if (msg.match(/course|program|degree|nursing|medtech|bsit|criminology|pharmacy|physical therapy|social work/)) {
       const { data } = await supabase
         .from('courses')
         .select('name, description, duration, has_intersession')
@@ -78,12 +120,12 @@ export async function POST(request: Request) {
       if (data?.length) {
         contextData += `\nCourses offered by ${school}:\n`
         for (const c of data) {
-          contextData += `- ${c.name} (${c.duration})${c.has_intersession ? ' has intersession' : ''}: ${c.description}\n`
+          contextData += `- ${c.name} (${c.duration})${c.has_intersession ? ' - has intersession' : ''}: ${c.description}\n`
         }
       }
     }
 
-    if (msg.match(/where|location|office|room|building|find/)) {
+    if (msg.match(/where|location|office|room|building|find|direction/)) {
       const { data } = await supabase
         .from('locations')
         .select('office_name, building, room')
@@ -106,30 +148,44 @@ export async function POST(request: Request) {
       }
     }
 
-    // ── System prompt ──────────────────────────────────────────────────────
+    // ── 3. System prompt ──────────────────────────────────────────────────
     const systemPrompt = `You are a powerful AI assistant for the Smart Campus Help Desk of ${school} (ISAP and MCNP) in Alimanao, Penablanca, Cagayan, Philippines.
 
-You work exactly like the real Gemini app — you search the internet in real time to answer any question.
+You work like the real Gemini app — smart, thorough, and can answer anything.
 
-${knowledgeContext ? `CAMPUS KNOWLEDGE BASE:\n${knowledgeContext}\n` : ''}
-${contextData ? `LIVE CAMPUS DATA:\n${contextData}\n` : ''}
+PRIORITY ORDER when answering:
+1. FIRST — Check the CAMPUS KNOWLEDGE BASE. If the answer is there, use it exactly.
+2. SECOND — Check LIVE CAMPUS DATA for tuition, courses, locations, FAQs.
+3. THIRD — Use your own knowledge and Google Search for everything else.
 
-HOW TO ANSWER:
-- For ANY question about ISAP, MCNP, or the school — search Google and give complete real-time information
-- For campus-specific data like tuition and fees — use the live campus data above
-- For everything else — search the internet and answer fully like Gemini
-- Never say "I don't have information" — always search first
-- Give detailed, complete answers with sources when available
+${knowledgeContext ? `
+━━━━━━━━━━━━━━━━━━━━━━━━
+CAMPUS KNOWLEDGE BASE (CHECK THIS FIRST):
+━━━━━━━━━━━━━━━━━━━━━━━━
+${knowledgeContext}
+━━━━━━━━━━━━━━━━━━━━━━━━
+` : ''}
+
+${contextData ? `LIVE CAMPUS DATA:\n${contextData}` : ''}
+
+SCHOOL BACKGROUND:
+${SCHOOL_INFO}
+
+RULES:
+- Always check knowledge base first — if the answer is there, use it
+- For questions not in the knowledge base, search Google and answer fully
+- Answer ANY question — school, homework, science, math, current events, anything
 - Use ₱ for peso amounts
-- Answer in English or Filipino depending on what the user uses
-- Be warm, helpful, and thorough like a real AI assistant`
+- Answer in English or Filipino depending on what the student uses
+- Be warm, helpful, detailed, and thorough like the real Gemini app
+- Never say "I don't know" — always try to find the answer`
 
-    // ── Conversation history ───────────────────────────────────────────────
+    // ── 4. Build conversation ─────────────────────────────────────────────
     const contents = [
       { role: 'user', parts: [{ text: systemPrompt }] },
       {
         role: 'model',
-        parts: [{ text: `Hello! I'm your Smart Campus AI Assistant for ${school}. I can help you with anything — campus questions, homework, general knowledge, or just a chat. What would you like to know?` }]
+        parts: [{ text: `Hello! I'm your Campus AI Assistant for ${school}. I can help with campus questions, homework, or anything else. What would you like to know?` }]
       },
       ...(conversationHistory || []).map((m: { role: string; content: string }) => ({
         role: m.role === 'model' ? 'model' : 'user',
@@ -138,98 +194,59 @@ HOW TO ANSWER:
       { role: 'user', parts: [{ text: message }] }
     ]
 
-    // ── Try models with Google Search grounding ────────────────────────────
-    const attempts = [
-      {
-        model: 'gemini-2.5-flash',
-        body: {
-          contents,
-          tools: [{ google_search: {} }],
-          generationConfig: { maxOutputTokens: 2048, temperature: 0.7 }
-        }
-      },
-      {
-        model: 'gemini-2.0-flash',
-        body: {
-          contents,
-          tools: [{ google_search: {} }],
-          generationConfig: { maxOutputTokens: 2048, temperature: 0.7 }
-        }
-      },
-      {
-        model: 'gemini-2.0-flash',
-        body: {
-          contents,
-          generationConfig: { maxOutputTokens: 2048, temperature: 0.7 }
-        }
-      },
-    ]
-
+    // ── 5. Try models in order ────────────────────────────────────────────
     let response = ''
+
+    const attempts = [
+      { model: 'gemini-2.5-flash', search: true },
+      { model: 'gemini-2.5-flash', search: false },
+      { model: 'gemini-2.0-flash', search: true },
+      { model: 'gemini-2.0-flash', search: false },
+      { model: 'gemini-1.5-flash', search: false },
+      { model: 'gemini-1.5-pro', search: false },
+    ]
 
     for (const attempt of attempts) {
       try {
-        const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${attempt.model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(attempt.body)
-          }
+        response = await callGemini(
+          attempt.model,
+          contents,
+          attempt.search,
+          apiKey
         )
-
-        if (res.ok) {
-          const data = await res.json()
-          const parts = data?.candidates?.[0]?.content?.parts || []
-          response = parts
-            .filter((p: { text?: string }) => p.text)
-            .map((p: { text: string }) => p.text)
-            .join('')
-          if (response) break
-        } else {
-          const errText = await res.text()
-          console.error(`Model ${attempt.model} failed:`, res.status, errText)
-        }
+        if (response) break
       } catch (e) {
-        console.error(`Model ${attempt.model} error:`, e)
+        console.error(`Attempt failed (${attempt.model}, search=${attempt.search}):`, e)
         continue
       }
     }
 
+    // ── 6. Absolute last resort — bare minimum request ────────────────────
     if (!response) {
-      // Try one more time with basic gemini without any tools
       try {
-        const basicRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents,
-              generationConfig: { maxOutputTokens: 2048, temperature: 0.7 }
-            })
-          }
+        response = await callGemini(
+          'gemini-1.5-flash',
+          [{ role: 'user', parts: [{ text: message }] }],
+          false,
+          apiKey,
+          1024
         )
-        if (basicRes.ok) {
-          const basicData = await basicRes.json()
-          const parts = basicData?.candidates?.[0]?.content?.parts || []
-          response = parts
-            .filter((p: { text?: string }) => p.text)
-            .map((p: { text: string }) => p.text)
-            .join('')
-        }
       } catch (e) {
-        console.error('Final fallback failed:', e)
+        console.error('Last resort failed:', e)
       }
     }
 
     if (!response) {
-      return NextResponse.json({ error: 'AI unavailable. Please try again.' }, { status: 500 })
+      return NextResponse.json(
+        { error: 'AI unavailable — please try again in a moment.' },
+        { status: 500 }
+      )
     }
 
     return NextResponse.json({ response })
 
   } catch (err: unknown) {
+    console.error('Chat API error:', err)
     const msg = err instanceof Error ? err.message : 'Failed'
     return NextResponse.json({ error: msg }, { status: 500 })
   }
