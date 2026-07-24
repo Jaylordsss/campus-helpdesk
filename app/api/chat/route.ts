@@ -112,7 +112,7 @@ async function callOpenRouter(
   apiKey: string
 ): Promise<string> {
   const model = imageBase64
-    ? 'google/gemini-2.0-flash-exp:free'
+    ? 'meta-llama/llama-4-maverick:free'
     : 'nvidia/nemotron-3-ultra-550b-a55b:free'
 
   const messages = [
@@ -127,8 +127,17 @@ async function callOpenRouter(
     messages.push({
       role: 'user',
       content: [
-        { type: 'image_url', image_url: { url: `data:${imageMimeType};base64,${imageBase64}` } },
-        { type: 'text', text: message || 'Describe this image in detail.' },
+        {
+          type: 'image_url',
+          image_url: {
+            url: `data:${imageMimeType};base64,${imageBase64}`,
+            detail: 'high',
+          }
+        },
+        {
+          type: 'text',
+          text: message || 'Describe this image in complete detail. Read all text visible. Analyze everything.'
+        },
       ] as unknown as string,
     })
   } else {
@@ -300,6 +309,7 @@ RULES:
         { model: 'gemini-2.5-flash-image', search: false },
         { model: 'gemini-2.5-flash', search: false },
         { model: 'gemini-2.0-flash', search: false },
+        { model: 'gemini-2.0-flash-lite', search: false },
       ] : [
         { model: 'gemini-2.5-flash', search: true },
         { model: 'gemini-2.5-flash', search: false },
