@@ -112,8 +112,8 @@ async function callOpenRouter(
   apiKey: string
 ): Promise<string> {
   const model = imageBase64
-    ? 'meta-llama/llama-4-maverick:free'
-    : 'nvidia/nemotron-3-ultra-550b-a55b:free'
+    ? 'google/gemini-2.0-flash-exp:free'
+    : 'poolside/laguna-s-2.1:free'
 
   const messages = [
     { role: 'system', content: systemPrompt },
@@ -157,7 +157,9 @@ async function callOpenRouter(
       messages,
       max_tokens: 2048,
       temperature: 0.7,
-      reasoning: { effort: 'high' },
+      ...(model === 'poolside/laguna-s-2.1:free' && {
+        reasoning: { effort: 'high' }
+      }),
     }),
   })
 
