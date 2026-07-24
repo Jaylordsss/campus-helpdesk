@@ -31,7 +31,22 @@ async function callGemini(
     contents,
     generationConfig: { maxOutputTokens: maxTokens, temperature: 0.7 },
   }
-  if (useSearch) body.tools = [{ google_search: {} }]
+  if (useSearch) {
+    body.tools = [{ google_search: {} }]
+    body.systemInstruction = {
+      parts: [{
+        text: `You have access to Google Search. 
+ALWAYS search Google for:
+- Current news and events
+- Latest information and updates  
+- Any facts you are not 100% sure about
+- Prices, schedules, contact info
+- Anything that may have changed recently
+Search multiple times if needed to get complete information.
+Always cite where you found the information.`
+      }]
+    }
+  }
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
@@ -275,8 +290,12 @@ SCHOOL BACKGROUND:
 ${SCHOOL_INFO}
 
 RULES:
-- Knowledge base first, then search/knowledge for everything else
+- Knowledge base first, then use Google Search for everything else
+- ALWAYS use Google Search for current events, news, prices, real-time data
+- Search multiple times if needed to get complete and accurate answers
 - Answer ANY question — school, homework, science, math, current events
+- For school questions not in knowledge base, search Google for the answer
+- Cite sources when using Google Search results
 - Use ₱ for peso amounts
 - Answer in English or Filipino depending on what the student uses
 - Be warm, helpful, and thorough
@@ -313,7 +332,8 @@ RULES:
         { model: 'gemini-2.0-flash', search: false },
         { model: 'gemini-2.0-flash-lite', search: false },
       ] : [
-        { model: 'gemini-2.5-flash', search: true },
+        { model: 'gemini-2.5-flash', search: true },   // always try with search first
+        { model: 'gemini-2.5-pro', search: true },      // pro with search
         { model: 'gemini-2.5-flash', search: false },
         { model: 'gemini-2.0-flash', search: true },
         { model: 'gemini-2.0-flash', search: false },
