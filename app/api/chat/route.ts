@@ -230,16 +230,18 @@ RULES:
 
     // ── 7. Model selection — vision models when image present ─────────────
     const attempts = imageBase64 ? [
-      { model: 'gemini-1.5-pro', search: false },
+      // Dedicated image models — best for photo analysis
+      { model: 'gemini-2.5-flash-image', search: false },
+      { model: 'gemini-2.5-flash', search: false },
       { model: 'gemini-2.0-flash', search: false },
-      { model: 'gemini-1.5-flash', search: false },
+      { model: 'gemini-2.0-flash-lite', search: false },
     ] : [
-      // Text-only — use search for best answers
+      // Text models with search
       { model: 'gemini-2.5-flash', search: true },
       { model: 'gemini-2.5-flash', search: false },
       { model: 'gemini-2.0-flash', search: true },
       { model: 'gemini-2.0-flash', search: false },
-      { model: 'gemini-1.5-flash', search: false },
+      { model: 'gemini-2.0-flash-lite', search: false },
     ]
 
     // ── 8. Try models in order ────────────────────────────────────────────
@@ -264,12 +266,12 @@ RULES:
     if (!response) {
       try {
         response = await callGemini(
-          'gemini-1.5-flash',
-          [{ role: 'user', parts: lastUserParts }],
-          false,
-          apiKey,
-          1024
-        )
+        'gemini-2.0-flash-lite',
+        [{ role: 'user', parts: lastUserParts }],
+        false,
+        apiKey,
+        1024
+      )
       } catch (e) {
         console.error('Last resort failed:', e)
       }
