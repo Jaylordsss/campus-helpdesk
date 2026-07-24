@@ -1,1017 +1,392 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import {
-  GraduationCap, Bot, BookOpen, CreditCard,
-  MapPin, HelpCircle, MessageSquare, Send,
-  Sparkles, User, ChevronDown, ChevronUp,
-  Clock, Megaphone, Bell, Maximize2, Minimize2
-} from 'lucide-react'
-
-const quickQuestions = [
-  'What courses does ISAP offer?',
-  'What courses does MCNP offer?',
-  'How much is the tuition fee?',
-  'What are the enrollment requirements?',
-  'Where is the Registrar Office?',
-  'What scholarships are available?',
-]
+import { Send, Bot, Loader2, ChevronDown } from 'lucide-react'
 
 type Message = {
-  id: string
-  role: 'user' | 'ai'
+  role: 'user' | 'assistant'
   content: string
-  timestamp: Date
 }
 
-type CourseData = {
-  name: string
-  description: string
-  duration: string
-  school: string
-  has_intersession: boolean
-}
-
-type TuitionData = {
-  id: string
-  course_name: string
-  year_level: string
-  semester: string
-  amount: number
-  school: string
-  course_id: string
-}
-
-type LocationData = {
-  id: string
-  office_name: string
-  building: string
-  room: string
-  school: string
-}
-
-type FAQData = {
-  id: string
-  question: string
-  answer: string
-  category: string
-}
-
-type AnnouncementData = {
-  id: string
-  title: string
-  content: string
-  type: string
-  school: string
-  created_at: string
-  expires_at: string | null
-}
-
-function renderMessage(content: string) {
-  const lines = content.split('\n')
-  return lines.map((line, i) => {
-    const trimmed = line.trim()
-    if (!trimmed) return <div key={i} className="h-1.5" />
-    if (trimmed.match(/^\d(st|nd|rd|th)\s+Year$/i)) {
-      return <p key={i} className="text-xs font-bold uppercase tracking-widest mt-3 mb-1 text-slate-500">{trimmed}</p>
-    }
-    if ((trimmed.startsWith('-') || trimmed.startsWith('•')) && trimmed.includes(':')) {
-      const clean = trimmed.replace(/^[-•]\s*/, '')
-      const colonIndex = clean.indexOf(':')
-      const label = clean.substring(0, colonIndex).trim()
-      const value = clean.substring(colonIndex + 1).trim()
-      if (label && value) {
-        return (
-          <div key={i} className="flex items-center justify-between py-1.5 border-b border-slate-100 last:border-0">
-            <span className="text-xs text-slate-500">{label}</span>
-            <span className="text-xs font-bold text-slate-800 ml-4">{value}</span>
-          </div>
-        )
-      }
-    }
-    if (trimmed.startsWith('-') || trimmed.startsWith('•')) {
-      const clean = trimmed.replace(/^[-•]\s*/, '')
-      return (
-        <div key={i} className="flex items-start gap-2 py-0.5">
-          <span className="mt-2 w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
-          <span className="text-sm text-slate-700 leading-relaxed">{clean}</span>
-        </div>
-      )
-    }
-    return <p key={i} className="text-sm leading-relaxed text-slate-800">{trimmed}</p>
-  })
-}
-
-const typeConfig: Record<string, { label: string; bg: string; text: string }> = {
-  urgent: { label: 'Urgent', bg: 'bg-red-100', text: 'text-red-700' },
-  enrollment: { label: 'Enrollment', bg: 'bg-blue-100', text: 'text-blue-700' },
-  event: { label: 'Event', bg: 'bg-violet-100', text: 'text-violet-700' },
-  holiday: { label: 'Holiday', bg: 'bg-amber-100', text: 'text-amber-700' },
-  general: { label: 'Announcement', bg: 'bg-slate-100', text: 'text-slate-700' },
-}
-
-// ── Install Header Button ─────────────────────────────────────────────────
-function InstallHeaderButton() {
-  const [installPrompt, setInstallPrompt] = useState<Event | null>(null)
-  const [isIOS, setIsIOS] = useState(false)
-  const [isInstalled, setIsInstalled] = useState(false)
-  const [showGuide, setShowGuide] = useState(false)
-
-  useEffect(() => {
-    const ios = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase())
-    setIsIOS(ios)
-    const standalone = window.matchMedia('(display-mode: standalone)').matches
-      || ('standalone' in window.navigator && (window.navigator as { standalone?: boolean }).standalone === true)
-    setIsInstalled(standalone)
-    const handler = (e: Event) => { e.preventDefault(); setInstallPrompt(e) }
-    window.addEventListener('beforeinstallprompt', handler)
-    window.addEventListener('appinstalled', () => setIsInstalled(true))
-    return () => window.removeEventListener('beforeinstallprompt', handler)
-  }, [])
-
-  if (isInstalled) return null
-
-  return (
-    <>
-      <button
-        onClick={async () => {
-          if (installPrompt) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            await (installPrompt as any).prompt()
-            setInstallPrompt(null)
-          } else {
-            setShowGuide(true)
-          }
-        }}
-        className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 px-2.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition-all"
-      >
-        <span>📲</span>
-        <span>Install</span>
-      </button>
-
-      {showGuide && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 px-4 pb-6 sm:pb-0">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-            <div className="flex items-center justify-between mb-5">
-              <p className="text-base font-bold text-slate-900">Install the App</p>
-              <button onClick={() => setShowGuide(false)} className="text-slate-400 hover:text-slate-600 text-lg leading-none">✕</button>
-            </div>
-
-            {isIOS ? (
-              <>
-                <p className="text-xs text-slate-500 mb-4">Follow these steps in Safari:</p>
-                <div className="space-y-3">
-                  {[
-                    { icon: '🌐', text: 'Open this page in Safari (not Chrome)' },
-                    { icon: '⬆️', text: 'Tap the Share button at the bottom of Safari' },
-                    { icon: '➕', text: 'Scroll down and tap "Add to Home Screen"' },
-                    { icon: '✅', text: 'Tap "Add" — icon appears on your home screen' },
-                  ].map((item, i) => (
-                    <div key={i} className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center shrink-0 text-sm">{item.icon}</div>
-                      <p className="text-sm text-slate-700">{item.text}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-4 p-3 bg-amber-50 border border-amber-100 rounded-xl">
-                  <p className="text-xs text-amber-700 font-medium">
-                    💡 Open from the Home Screen icon to receive push notifications.
-                  </p>
-                </div>
-              </>
-            ) : (
-              <>
-                <p className="text-xs text-slate-500 mb-4">Install on your device:</p>
-                <div className="space-y-3">
-                  {[
-                    { icon: '🖥️', text: 'Desktop Chrome/Edge — click the install icon (⊕) in the address bar on the right' },
-                    { icon: '🤖', text: 'Android Chrome — tap the 3-dot menu → Add to Home Screen' },
-                    { icon: '🍎', text: 'iPhone Safari — tap Share (⬆) → Add to Home Screen' },
-                    { icon: '🪟', text: 'Windows — look for the install icon in the browser address bar' },
-                  ].map((item, i) => (
-                    <div key={i} className="flex items-start gap-3">
-                      <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center shrink-0 text-sm">{item.icon}</div>
-                      <p className="text-sm text-slate-700">{item.text}</p>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-
-            <button
-              onClick={() => setShowGuide(false)}
-              className="w-full mt-5 py-3 bg-slate-800 text-white text-sm font-semibold rounded-xl"
-            >
-              Got it!
-            </button>
-          </div>
-        </div>
-      )}
-    </>
-  )
-}
-
-// ── Install Banner (in content area) ─────────────────────────────────────
-function InstallBanner() {
-  const [installPrompt, setInstallPrompt] = useState<Event | null>(null)
-  const [installed, setInstalled] = useState(false)
-  const [isIOS, setIsIOS] = useState(false)
-  const [isInStandaloneMode, setIsInStandaloneMode] = useState(false)
-  const [showIOSGuide, setShowIOSGuide] = useState(false)
-  const [dismissed, setDismissed] = useState(false)
-
-  useEffect(() => {
-    const ios = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase())
-    setIsIOS(ios)
-    const standalone = window.matchMedia('(display-mode: standalone)').matches
-      || ('standalone' in window.navigator && (window.navigator as { standalone?: boolean }).standalone === true)
-    setIsInStandaloneMode(standalone)
-    const handler = (e: Event) => { e.preventDefault(); setInstallPrompt(e) }
-    window.addEventListener('beforeinstallprompt', handler)
-    window.addEventListener('appinstalled', () => setInstalled(true))
-    return () => window.removeEventListener('beforeinstallprompt', handler)
-  }, [])
-
-  if (installed || dismissed || isInStandaloneMode) return null
-
-  if (isIOS && !installPrompt) {
-    return (
-      <>
-        <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-2xl p-4 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center shrink-0 text-xl">📱</div>
-            <div>
-              <p className="text-sm font-bold text-white">Install on iPhone</p>
-              <p className="text-xs text-slate-400 mt-0.5">Works offline · Add to Home Screen</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button onClick={() => setShowIOSGuide(true)} className="px-3 py-2 bg-white text-slate-900 text-xs font-bold rounded-xl">How?</button>
-            <button onClick={() => setDismissed(true)} className="text-slate-500 text-xs px-2 py-2">✕</button>
-          </div>
-        </div>
-
-        {showIOSGuide && (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 px-4 pb-6 sm:pb-0">
-            <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-base font-bold text-slate-900">Install on iPhone / iPad</p>
-                <button onClick={() => setShowIOSGuide(false)} className="text-slate-400 text-lg leading-none">✕</button>
-              </div>
-              <div className="space-y-3">
-                {[
-                  { icon: '🌐', text: 'Open this page in Safari (not Chrome)' },
-                  { icon: '⬆️', text: 'Tap the Share button at the bottom of Safari' },
-                  { icon: '➕', text: 'Scroll down and tap "Add to Home Screen"' },
-                  { icon: '✅', text: 'Tap "Add" — the app icon appears on your home screen' },
-                ].map((item, i) => (
-                  <div key={i} className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center shrink-0 text-sm">{item.icon}</div>
-                    <p className="text-sm text-slate-700">{item.text}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-4 p-3 bg-amber-50 border border-amber-100 rounded-xl">
-                <p className="text-xs text-amber-700 font-medium">💡 Open from the Home Screen icon to receive push notifications.</p>
-              </div>
-              <button onClick={() => setShowIOSGuide(false)} className="w-full mt-4 py-3 bg-slate-800 text-white text-sm font-semibold rounded-xl">Got it!</button>
-            </div>
-          </div>
-        )}
-      </>
-    )
-  }
-
-  if (installPrompt) {
-    return (
-      <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-2xl p-4 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center shrink-0 text-xl">📲</div>
-          <div>
-            <p className="text-sm font-bold text-white">Install App</p>
-            <p className="text-xs text-slate-400 mt-0.5">Works offline · Home screen · Push notifications</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={async () => {
-              if (!installPrompt) return
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              await (installPrompt as any).prompt()
-              setInstallPrompt(null)
-            }}
-            className="px-4 py-2 bg-white text-slate-900 text-xs font-bold rounded-xl"
-          >
-            Install
-          </button>
-          <button onClick={() => setDismissed(true)} className="text-slate-500 text-xs px-2 py-2">✕</button>
-        </div>
-      </div>
-    )
-  }
-
-  return null
-}
-
-// ── Main Page ─────────────────────────────────────────────────────────────
 export default function VisitorPage() {
   const router = useRouter()
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const contentRef = useRef<HTMLDivElement>(null)
-
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 'welcome',
-      role: 'ai',
-      content: 'Hello! Welcome to the Smart Campus Help Desk for ISAP and MCNP.\n\nI can help you with:\n- Course and program information\n- Tuition fees\n- Enrollment requirements\n- Office locations\n- Scholarships and grants\n- General campus questions\n\nWhat would you like to know?',
-      timestamp: new Date(0)
-    }
-  ])
+  const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [activeSection, setActiveSection] = useState<string | null>(null)
-  const [sectionSchool, setSectionSchool] = useState<'ISAP' | 'MCNP'>('ISAP')
-  const [sectionData, setSectionData] = useState<Record<string, unknown>[]>([])
-  const [sectionLoading, setSectionLoading] = useState(false)
-  const [announcements, setAnnouncements] = useState<AnnouncementData[]>([])
-  const [openFaq, setOpenFaq] = useState<number | null>(null)
-  const [mounted, setMounted] = useState(false)
-  const [fullscreen, setFullscreen] = useState(false)
-  const [chatStarted, setChatStarted] = useState(false)
-
-  useEffect(() => { setMounted(true) }, [])
+  const [showInstall, setShowInstall] = useState(false)
+  const [deferredPrompt, setDeferredPrompt] = useState<Event | null>(null)
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
-
-  useEffect(() => {
-    const fetchAnnouncements = async () => {
-      const { createClient } = await import('@/src/lib/supabase/client')
-      const supabase = createClient()
-      const { data } = await supabase
-        .from('announcements').select('*').eq('is_active', true)
-        .order('created_at', { ascending: false }).limit(3)
-      const valid = (data || []).filter((a: AnnouncementData) =>
-        !a.expires_at || new Date(a.expires_at) >= new Date()
-      )
-      setAnnouncements(valid)
+    const handler = (e: Event) => {
+      e.preventDefault()
+      setDeferredPrompt(e)
+      setShowInstall(true)
     }
-    fetchAnnouncements()
-  }, [])
-
-  const fetchSectionData = useCallback(async (section: string, school: string) => {
-    setSectionLoading(true)
-    setSectionData([])
-    const { createClient } = await import('@/src/lib/supabase/client')
-    const supabase = createClient()
-    if (section === 'courses') {
-      const { data } = await supabase.from('courses').select('name, description, duration, school, has_intersession').eq('school', school).order('name')
-      setSectionData((data || []) as unknown as Record<string, unknown>[])
-    } else if (section === 'tuition') {
-      const { data: courses } = await supabase.from('courses').select('id, name').eq('school', school)
-      const { data: tuition } = await supabase.from('tuition').select('*').eq('school', school)
-      const map: Record<string, string> = {}
-      courses?.forEach((c: { id: string; name: string }) => { map[c.id] = c.name })
-      setSectionData((tuition || []).map((t: Record<string, unknown>) => ({ ...t, course_name: map[t.course_id as string] || 'Unknown' })))
-    } else if (section === 'locations') {
-      const { data } = await supabase.from('locations').select('id, office_name, building, room, school').order('school').order('office_name')
-      setSectionData((data || []) as unknown as Record<string, unknown>[])
-    } else if (section === 'faq') {
-      const { data } = await supabase.from('faq').select('id, question, answer, category').or(`school.eq.${school},school.eq.BOTH`).order('category')
-      setSectionData((data || []) as unknown as Record<string, unknown>[])
-    }
-    setSectionLoading(false)
+    window.addEventListener('beforeinstallprompt', handler)
+    return () => window.removeEventListener('beforeinstallprompt', handler)
   }, [])
 
   useEffect(() => {
-    if (!activeSection) return
-    fetchSectionData(activeSection, sectionSchool)
-  }, [activeSection, sectionSchool, fetchSectionData])
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, loading])
 
-  const sendMessage = async (text: string) => {
-    if (!text.trim() || loading) return
-    setChatStarted(true)
-    const userMsg: Message = {
-      id: crypto.randomUUID(), role: 'user',
-      content: text.trim(), timestamp: new Date()
-    }
-    setMessages(prev => [...prev, userMsg])
+  const sendMessage = async (text?: string) => {
+    const msg = (text || input).trim()
+    if (!msg || loading) return
     setInput('')
+    const newMessages: Message[] = [...messages, { role: 'user', content: msg }]
+    setMessages(newMessages)
     setLoading(true)
     try {
       const res = await fetch('/api/visitor-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text.trim() })
+        body: JSON.stringify({ message: msg }),
       })
       const data = await res.json()
-      setMessages(prev => [...prev, {
-        id: crypto.randomUUID(), role: 'ai',
-        content: data.response || 'Sorry, I could not process that.',
-        timestamp: new Date()
+      setMessages([...newMessages, {
+        role: 'assistant',
+        content: data.response || 'Sorry, I could not answer that. Please try again.'
       }])
     } catch {
-      setMessages(prev => [...prev, {
-        id: crypto.randomUUID(), role: 'ai',
-        content: 'Sorry, something went wrong.', timestamp: new Date()
+      setMessages([...newMessages, {
+        role: 'assistant',
+        content: 'Connection issue. Please try again!'
       }])
     } finally {
       setLoading(false)
-      inputRef.current?.focus()
     }
   }
 
-  const formatTime = (date: Date) => {
-    if (!mounted) return ''
-    return date.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })
+  const handleInstall = async () => {
+    if (!deferredPrompt) return
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (deferredPrompt as any).prompt()
+    setDeferredPrompt(null)
+    setShowInstall(false)
   }
 
-  const timeAgo = (date: string) => {
-    const diff = new Date().getTime() - new Date(date).getTime()
-    const mins = Math.floor(diff / 60000)
-    if (mins < 60) return `${mins}m ago`
-    const hrs = Math.floor(mins / 60)
-    if (hrs < 24) return `${hrs}h ago`
-    return `${Math.floor(hrs / 24)}d ago`
+  const formatMessage = (content: string) => {
+    return content
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/^- (.+)$/gm, '<div style="display:flex;gap:6px;margin:2px 0"><span>•</span><span>$1</span></div>')
+      .replace(/^### (.+)$/gm, '<p style="font-weight:700;margin:10px 0 4px">$1</p>')
+      .replace(/^## (.+)$/gm, '<p style="font-weight:700;margin:12px 0 4px">$1</p>')
+      .split('\n\n')
+      .map(p => p.trim() ? `<p style="margin:6px 0">${p}</p>` : '')
+      .join('')
   }
 
-  const sections = [
-    { id: 'courses', label: 'Courses', icon: BookOpen, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { id: 'tuition', label: 'Tuition Fees', icon: CreditCard, color: 'text-amber-600', bg: 'bg-amber-50' },
-    { id: 'locations', label: 'Offices', icon: MapPin, color: 'text-violet-600', bg: 'bg-violet-50' },
-    { id: 'faq', label: 'FAQs', icon: HelpCircle, color: 'text-blue-600', bg: 'bg-blue-50' },
+  const SUGGESTIONS = [
+    'What courses does ISAP offer?',
+    'What courses does MCNP offer?',
+    'How much is the tuition fee?',
+    'Where is the campus located?',
   ]
 
-  const SectionContent = () => (
-    <>
-      {sectionLoading ? (
-        <div className="flex justify-center py-8">
-          <div className="w-5 h-5 border-[3px] border-slate-200 border-t-slate-500 rounded-full animate-spin" />
-        </div>
-      ) : activeSection === 'courses' ? (
-        <div className="space-y-3">
-          {(sectionData as unknown as CourseData[]).map((c, i) => (
-            <div key={i} className="flex items-start gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
-              <div className="w-9 h-9 bg-emerald-100 rounded-lg flex items-center justify-center shrink-0">
-                <BookOpen size={15} className="text-emerald-600" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-slate-900">{c.name}</p>
-                <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{c.description}</p>
-                <div className="flex items-center gap-2 mt-1.5">
-                  <span className="text-xs text-slate-400">{c.duration}</span>
-                  {c.has_intersession && <span className="text-xs font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">Has intersession</span>}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : activeSection === 'tuition' ? (
-        <div className="space-y-4">
-          {Array.from(new Set((sectionData as unknown as TuitionData[]).map(t => t.course_name))).map((courseName, ci) => {
-            const courseRecords = (sectionData as unknown as TuitionData[]).filter(t => t.course_name === courseName)
-            const yearOrder = ['1st Year', '2nd Year', '3rd Year', '4th Year']
-            const semOrder = ['1st Semester', '2nd Semester', 'Intersession']
-            const availableYears = yearOrder.filter(y => courseRecords.some(r => r.year_level === y))
-            const isISAPSchool = sectionSchool === 'ISAP'
-            const accentBg = isISAPSchool ? 'bg-red-50' : 'bg-blue-50'
-            const accentText = isISAPSchool ? 'text-red-700' : 'text-blue-700'
-            const accentBorder = isISAPSchool ? 'border-red-100' : 'border-blue-100'
-            return (
-              <div key={`course-${ci}`} className={`border ${accentBorder} rounded-2xl overflow-hidden`}>
-                <div className={`px-5 py-3 ${accentBg} border-b ${accentBorder}`}>
-                  <p className={`text-sm font-bold ${accentText}`}>{courseName}</p>
-                </div>
-                {availableYears.map((year, yi) => {
-                  const yearRecords = courseRecords.filter(r => r.year_level === year).sort((a, b) => semOrder.indexOf(a.semester) - semOrder.indexOf(b.semester))
-                  const regularTotal = yearRecords.filter(r => r.semester !== 'Intersession').reduce((sum, r) => sum + Number(r.amount), 0)
-                  return (
-                    <div key={`year-${yi}`} className="border-b border-slate-50 last:border-0">
-                      <div className="px-5 py-2 bg-slate-50 flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-600 uppercase tracking-wide">{year}</span>
-                        <span className="text-xs text-slate-400">Annual: <span className={`font-bold ${accentText}`}>₱{regularTotal.toLocaleString()}</span></span>
-                      </div>
-                      {yearRecords.map((r, ri) => (
-                        <div key={`sem-${ri}`} className="flex items-center justify-between px-5 py-3 border-t border-slate-50 hover:bg-slate-50">
-                          <div className="flex items-center gap-2 pl-3">
-                            <span className="w-1 h-1 rounded-full bg-slate-300" />
-                            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${r.semester === 'Intersession' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>{r.semester}</span>
-                          </div>
-                          <span className="text-sm font-bold text-slate-900">₱{Number(r.amount).toLocaleString()}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )
-                })}
-              </div>
-            )
-          })}
-        </div>
-      ) : activeSection === 'locations' ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {(sectionData as unknown as LocationData[]).map((l, i) => (
-            <div key={l.id || i} className="flex items-start gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
-              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${l.school === 'ISAP' ? 'bg-red-100' : 'bg-blue-100'}`}>
-                <MapPin size={15} className={l.school === 'ISAP' ? 'text-red-600' : 'text-blue-600'} />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-slate-900">{l.office_name}</p>
-                <p className="text-xs text-slate-500 mt-0.5">{l.building}</p>
-                {l.room && <p className="text-xs text-slate-400">{l.room}</p>}
-                <span className={`inline-block mt-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full ${l.school === 'ISAP' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>{l.school}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : activeSection === 'faq' ? (
-        <div className="space-y-2">
-          {(sectionData as unknown as FAQData[]).map((f, i) => (
-            <div key={f.id || i} className="border border-slate-100 rounded-xl overflow-hidden">
-              <button onClick={() => setOpenFaq(openFaq === i ? null : i)}
-                className="w-full flex items-start justify-between gap-4 px-4 py-3.5 text-left hover:bg-slate-50">
-                <div className="flex items-start gap-3">
-                  <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${openFaq === i ? 'bg-slate-800' : 'bg-slate-100'}`}>
-                    <HelpCircle size={13} className={openFaq === i ? 'text-white' : 'text-slate-400'} />
-                  </div>
-                  <p className="text-sm font-semibold text-slate-800 leading-snug">{f.question}</p>
-                </div>
-                {openFaq === i
-                  ? <ChevronUp size={16} className="text-slate-400 shrink-0 mt-0.5" />
-                  : <ChevronDown size={16} className="text-slate-400 shrink-0 mt-0.5" />
-                }
-              </button>
-              {openFaq === i && (
-                <div className="px-4 pb-4 bg-slate-50 border-t border-slate-100">
-                  <p className="text-sm text-slate-600 leading-relaxed pt-3">{f.answer}</p>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </>
-  )
-
-  const ExploreSection = ({ mobile = false }: { mobile?: boolean }) => (
-    <div>
-      <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-4">Explore Campus Info</p>
-      <div className={`grid gap-3 ${mobile ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-4'}`}>
-        {sections.map(s => {
-          const Icon = s.icon
-          const isActive = activeSection === s.id
-          return (
-            <button key={s.id} onClick={() => setActiveSection(isActive ? null : s.id)}
-              className={`bg-white rounded-2xl border p-4 text-left transition-all hover:shadow-sm ${isActive ? 'border-slate-300 shadow-sm' : 'border-slate-100'}`}>
-              <div className={`w-9 h-9 ${s.bg} rounded-xl flex items-center justify-center mb-2.5`}>
-                <Icon size={17} className={s.color} />
-              </div>
-              <p className="text-sm font-semibold text-slate-800">{s.label}</p>
-              <p className="text-xs text-slate-400 mt-0.5">{isActive ? 'Tap to close' : 'Tap to view'}</p>
-            </button>
-          )
-        })}
-      </div>
-
-      {activeSection && (
-        <div className="mt-4 bg-white rounded-2xl border border-slate-100 overflow-hidden">
-          {activeSection !== 'locations' && (
-            <div className="flex items-center gap-2 px-5 py-3 border-b border-slate-100 bg-slate-50">
-              <span className="text-xs font-semibold text-slate-500 mr-1">Show:</span>
-              {(['ISAP', 'MCNP'] as const).map(s => (
-                <button key={s} onClick={() => setSectionSchool(s)}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                    sectionSchool === s
-                      ? s === 'ISAP' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
-                      : 'bg-white border border-slate-200 text-slate-500'
-                  }`}>{s}
-                </button>
-              ))}
-            </div>
-          )}
-          <div className="p-5">
-            <SectionContent />
-          </div>
-        </div>
-      )}
-    </div>
-  )
-
-  const CTASection = () => (
-    <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-2xl p-6 sm:p-8 text-center">
-      <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center mx-auto mb-4">
-        <MessageSquare size={22} className="text-white" />
-      </div>
-      <h2 className="text-xl font-bold text-white mb-2">Need more help?</h2>
-      <p className="text-slate-400 text-sm mb-6 max-w-md mx-auto">
-        Create a free account to submit inquiries, track responses, and get personalized campus assistance.
-      </p>
-      <div className="flex items-center justify-center gap-3 flex-wrap">
-        <button onClick={() => router.push('/signup')} className="bg-white text-slate-900 text-sm font-bold px-6 py-3 rounded-xl hover:bg-slate-100 transition-all">
-          Create free account
-        </button>
-        <button onClick={() => router.push('/login')} className="text-slate-300 hover:text-white text-sm font-semibold px-6 py-3 rounded-xl border border-slate-700 hover:border-slate-500 transition-all">
-          Log in
-        </button>
-      </div>
-    </div>
-  )
-
-  if (!mounted) return null
+  const hasMessages = messages.length > 0
 
   return (
-    <>
-      {/* ── MOBILE ── */}
-      <div className="block sm:hidden">
-        <div className="flex flex-col bg-slate-50" style={{ height: '100dvh' }}>
+    <div
+      className="flex flex-col"
+      style={{
+        height: '100dvh',
+        backgroundColor: '#0f172a',
+        paddingLeft: 'env(safe-area-inset-left)',
+        paddingRight: 'env(safe-area-inset-right)',
+      }}
+    >
 
-          {/* Mobile header */}
-          <header className="bg-white border-b border-slate-200 shrink-0">
-            <div className="px-4 py-3 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 bg-slate-800 rounded-xl flex items-center justify-center">
-                  <Bot size={16} className="text-white" />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-slate-900">Campus AI</p>
-                  <p className="text-[10px] text-slate-400">ISAP & MCNP</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <InstallHeaderButton />
-                <button onClick={() => router.push('/login')} className="text-xs font-semibold text-slate-500 px-2.5 py-1.5 rounded-lg bg-slate-100">
-                  Log in
-                </button>
-                <button onClick={() => router.push('/signup')} className="text-xs font-semibold text-white bg-slate-800 px-2.5 py-1.5 rounded-lg">
-                  Sign up
-                </button>
+      {/* ── HEADER ── */}
+      <div
+        className="shrink-0 flex items-center justify-between"
+        style={{
+          padding: '12px 16px',
+          paddingTop: 'max(12px, env(safe-area-inset-top))',
+          backgroundColor: '#0f172a',
+          borderBottom: '1px solid #1e293b',
+        }}
+      >
+        {/* Logo + name */}
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div style={{
+            width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+            background: 'linear-gradient(135deg,#dc2626,#2563eb)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 18,
+          }}>🎓</div>
+          <div className="min-w-0">
+            <p style={{ color: '#f1f5f9', fontWeight: 700, fontSize: 14, lineHeight: 1.2 }}>
+              Campus Help Desk
+            </p>
+            <p style={{ color: '#475569', fontSize: 11, lineHeight: 1.2 }}>ISAP &amp; MCNP</p>
+          </div>
+        </div>
+
+        {/* Auth buttons — fixed sizing, no clipping */}
+        <div className="flex items-center gap-2 shrink-0 ml-3">
+          <button
+            onClick={() => router.push('/login')}
+            style={{
+              color: '#94a3b8', fontSize: 13, fontWeight: 600,
+              padding: '7px 12px', borderRadius: 10,
+              border: '1px solid #1e293b',
+              backgroundColor: 'transparent',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Log in
+          </button>
+          <button
+            onClick={() => router.push('/signup')}
+            style={{
+              color: '#ffffff', fontSize: 13, fontWeight: 600,
+              padding: '7px 12px', borderRadius: 10,
+              background: 'linear-gradient(135deg,#dc2626,#2563eb)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Sign up
+          </button>
+        </div>
+      </div>
+
+      {/* ── CHAT AREA ── */}
+      <div
+        className="flex-1 overflow-y-auto"
+        style={{ padding: '0 16px' }}
+      >
+
+        {/* Welcome — vertically centered when no messages */}
+        {!hasMessages && (
+          <div
+            className="flex flex-col items-center justify-center text-center"
+            style={{ minHeight: '100%', padding: '24px 0 16px' }}
+          >
+            {/* Icon */}
+            <div style={{
+              width: 72, height: 72, borderRadius: 20, marginBottom: 16,
+              background: 'linear-gradient(135deg,#dc2626,#2563eb)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 36, boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+            }}>🎓</div>
+
+            <p style={{ color: '#f1f5f9', fontSize: 20, fontWeight: 700, marginBottom: 8 }}>
+              Campus AI Assistant
+            </p>
+            <p style={{ color: '#64748b', fontSize: 14, lineHeight: 1.6, maxWidth: 280, marginBottom: 24 }}>
+              Ask anything about ISAP and MCNP — courses, tuition, enrollment, campus life, and more.
+            </p>
+
+            {/* Suggestion chips — horizontally scrollable */}
+            <div
+              style={{
+                display: 'flex',
+                gap: 8,
+                overflowX: 'auto',
+                width: '100%',
+                paddingBottom: 4,
+                scrollbarWidth: 'none',
+                WebkitOverflowScrolling: 'touch',
+              }}
+            >
+              <style>{`.chips::-webkit-scrollbar{display:none}`}</style>
+              <div className="chips" style={{
+                display: 'flex', gap: 8, width: '100%',
+                overflowX: 'auto', paddingBottom: 4,
+              }}>
+                {SUGGESTIONS.map((s, i) => (
+                  <button
+                    key={i}
+                    onClick={() => sendMessage(s)}
+                    style={{
+                      flexShrink: 0,
+                      padding: '8px 14px',
+                      borderRadius: 20,
+                      border: '1px solid #1e293b',
+                      backgroundColor: '#1e293b',
+                      color: '#94a3b8',
+                      fontSize: 12,
+                      fontWeight: 500,
+                      whiteSpace: 'nowrap',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {s}
+                  </button>
+                ))}
               </div>
             </div>
-          </header>
 
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-            {!chatStarted && (
-              <div className="text-center py-6">
-                <div className="flex items-center justify-center gap-2 mb-3">
-                  <span className="flex items-center gap-1 bg-red-50 border border-red-100 px-2.5 py-1 rounded-full text-xs font-bold text-red-700">
-                    <span className="w-1.5 h-1.5 bg-red-400 rounded-full" />ISAP
-                  </span>
-                  <span className="flex items-center gap-1 bg-blue-50 border border-blue-100 px-2.5 py-1 rounded-full text-xs font-bold text-blue-700">
-                    <span className="w-1.5 h-1.5 bg-blue-400 rounded-full" />MCNP
-                  </span>
-                </div>
-                <h1 className="text-2xl font-bold text-slate-900 mb-1">How can I help you?</h1>
-                <p className="text-xs text-slate-500 mb-4">Ask anything about campus, courses, tuition</p>
-                <button
-                  onClick={() => contentRef.current?.scrollIntoView({ behavior: 'smooth' })}
-                  className="flex items-center gap-1.5 mx-auto text-xs text-slate-400"
-                >
-                  <ChevronDown size={14} />
-                  Explore campus info below
-                </button>
-              </div>
-            )}
+            {/* Scroll hint */}
+            <p style={{ color: '#334155', fontSize: 11, marginTop: 12 }}>
+              ← swipe to see more suggestions →
+            </p>
+          </div>
+        )}
 
-            {messages.map(msg => (
-              <div key={msg.id} className={`flex gap-2.5 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${msg.role === 'ai' ? 'bg-slate-800' : 'bg-slate-600'}`}>
-                  {msg.role === 'ai' ? <Bot size={13} className="text-white" /> : <User size={13} className="text-white" />}
-                </div>
-                <div className={`max-w-[80%] rounded-2xl px-3.5 py-2.5 ${msg.role === 'ai' ? 'bg-white border border-slate-100 rounded-tl-sm shadow-sm' : 'bg-slate-800 rounded-tr-sm'}`}>
-                  {msg.role === 'ai' ? renderMessage(msg.content) : <p className="text-sm text-white leading-relaxed">{msg.content}</p>}
-                  {mounted && msg.timestamp.getTime() !== 0 && (
-                    <p className={`text-[10px] mt-1 ${msg.role === 'ai' ? 'text-slate-300' : 'text-slate-400'}`} suppressHydrationWarning>
-                      {formatTime(msg.timestamp)}
-                    </p>
+        {/* Messages */}
+        {hasMessages && (
+          <div style={{ paddingTop: 16, paddingBottom: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {messages.map((msg, i) => (
+              <div key={i} style={{ display: 'flex', gap: 10, justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+
+                {msg.role === 'assistant' && (
+                  <div style={{
+                    width: 28, height: 28, borderRadius: 8, flexShrink: 0, marginTop: 2,
+                    background: 'linear-gradient(135deg,#dc2626,#2563eb)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14,
+                  }}>🎓</div>
+                )}
+
+                <div style={{
+                  maxWidth: '80%',
+                  padding: '10px 14px',
+                  borderRadius: msg.role === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+                  backgroundColor: msg.role === 'user' ? '#2563eb' : '#1e293b',
+                  color: msg.role === 'user' ? '#ffffff' : '#e2e8f0',
+                  fontSize: 14,
+                  lineHeight: 1.6,
+                  border: msg.role === 'assistant' ? '1px solid #334155' : 'none',
+                }}>
+                  {msg.role === 'assistant' ? (
+                    <div dangerouslySetInnerHTML={{ __html: formatMessage(msg.content) }} />
+                  ) : (
+                    <p style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</p>
                   )}
                 </div>
               </div>
             ))}
 
             {loading && (
-              <div className="flex gap-2.5">
-                <div className="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center shrink-0">
-                  <Bot size={13} className="text-white" />
-                </div>
-                <div className="bg-white border border-slate-100 rounded-2xl rounded-tl-sm px-3.5 py-2.5 shadow-sm">
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                  </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <div style={{
+                  width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+                  background: 'linear-gradient(135deg,#dc2626,#2563eb)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14,
+                }}>🎓</div>
+                <div style={{
+                  padding: '12px 16px', borderRadius: '18px 18px 18px 4px',
+                  backgroundColor: '#1e293b', border: '1px solid #334155',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}>
+                  {[0, 1, 2].map(i => (
+                    <div key={i} style={{
+                      width: 6, height: 6, borderRadius: '50%', backgroundColor: '#475569',
+                      animation: 'dotB 1.2s ease-in-out infinite',
+                      animationDelay: `${i * 0.2}s`,
+                    }} />
+                  ))}
+                  <style>{`@keyframes dotB{0%,80%,100%{background:#475569;transform:scale(1)}40%{background:#94a3b8;transform:scale(1.4)}}`}</style>
                 </div>
               </div>
             )}
-            <div ref={messagesEndRef} />
+            <div ref={bottomRef} />
           </div>
+        )}
+      </div>
 
-          {/* Quick questions */}
-          {!chatStarted && (
-            <div className="px-4 py-2 bg-white border-t border-slate-100 shrink-0">
-              <div className="flex items-center gap-1.5 mb-2">
-                <Sparkles size={11} className="text-slate-400" />
-                <p className="text-[11px] font-semibold text-slate-400">Try asking</p>
-              </div>
-              <div className="flex gap-2 overflow-x-auto pb-1">
-                {quickQuestions.map(q => (
-                  <button key={q} onClick={() => sendMessage(q)}
-                    className="text-xs font-medium px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600 border border-slate-200 whitespace-nowrap shrink-0">
-                    {q}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Input pinned to bottom */}
-          <div className="px-4 py-3 bg-white border-t border-slate-100 shrink-0">
-            <form onSubmit={e => { e.preventDefault(); sendMessage(input) }}
-              className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-2.5">
-              <input
-                ref={inputRef}
-                type="text"
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                placeholder="Ask anything about ISAP or MCNP..."
-                disabled={loading}
-                className="flex-1 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none disabled:opacity-50 bg-transparent"
-              />
-              <button type="submit" disabled={loading || !input.trim()}
-                className="w-8 h-8 rounded-xl flex items-center justify-center text-white bg-slate-800 disabled:opacity-40 shrink-0">
-                <Send size={14} />
-              </button>
-            </form>
-          </div>
+      {/* ── INPUT BAR ── */}
+      <div
+        className="shrink-0"
+        style={{
+          padding: '12px 16px',
+          paddingBottom: 'max(16px, env(safe-area-inset-bottom))',
+          backgroundColor: '#0f172a',
+          borderTop: '1px solid #1e293b',
+        }}
+      >
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          backgroundColor: '#1e293b',
+          border: '1px solid #334155',
+          borderRadius: 24,
+          padding: '10px 10px 10px 16px',
+        }}>
+          <input
+            ref={inputRef}
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && !loading && sendMessage()}
+            placeholder="Ask anything about ISAP or MCNP..."
+            style={{
+              flex: 1,
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              color: '#f1f5f9',
+              fontSize: 14,
+              lineHeight: 1.5,
+              minWidth: 0,
+            }}
+          />
+          <button
+            onClick={() => sendMessage()}
+            disabled={!input.trim() || loading}
+            style={{
+              width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+              background: input.trim() && !loading
+                ? 'linear-gradient(135deg,#dc2626,#2563eb)'
+                : '#334155',
+              border: 'none', cursor: input.trim() && !loading ? 'pointer' : 'default',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'all 0.2s',
+            }}
+          >
+            {loading
+              ? <Loader2 size={16} color="#64748b" className="animate-spin" />
+              : <Send size={16} color={input.trim() ? '#ffffff' : '#64748b'} />
+            }
+          </button>
         </div>
 
-        {/* Mobile content below */}
-        <div ref={contentRef} className="bg-slate-50 px-4 py-8 space-y-8">
-          <ExploreSection mobile />
-          {announcements.length > 0 && (
-            <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-4">Latest Announcements</p>
-              <div className="space-y-3">
-                {announcements.map(a => {
-                  const cfg = typeConfig[a.type] || typeConfig.general
-                  return (
-                    <div key={a.id} className="bg-white rounded-2xl border border-slate-100 p-4">
-                      <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
-                      <p className="text-sm font-bold text-slate-900 mt-2">{a.title}</p>
-                      <p className="text-xs text-slate-500 mt-1">{a.content}</p>
-                      <p className="text-xs text-slate-400 mt-2">{timeAgo(a.created_at)}</p>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-          <InstallBanner />
-          <CTASection />
-          <div className="text-center pb-4">
-            <p className="text-xs text-slate-400">Smart Campus Help Desk · ISAP and MCNP</p>
-            <p className="text-xs text-slate-300 mt-1">Alimanao, Penablanca, Cagayan, Philippines</p>
-          </div>
+        {/* Footer links */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, marginTop: 12 }}>
+          <button onClick={() => router.push('/login')}
+            style={{ color: '#475569', fontSize: 12, fontWeight: 500, background: 'none', border: 'none', cursor: 'pointer' }}>
+            Log in for full access
+          </button>
+          <span style={{ color: '#1e293b' }}>·</span>
+          <button onClick={() => router.push('/signup')}
+            style={{ color: '#2563eb', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer' }}>
+            Create account →
+          </button>
         </div>
       </div>
 
-      {/* ── DESKTOP ── */}
-      <div className="hidden sm:block min-h-screen bg-slate-50">
-
-        {/* Desktop header */}
-        <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
-          <div className="max-w-3xl mx-auto px-6 py-3 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-gradient-to-br from-red-100 to-blue-100 rounded-xl flex items-center justify-center">
-                <GraduationCap size={16} className="text-slate-700" />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-slate-900">Smart Campus Help Desk</p>
-                <p className="text-[10px] text-slate-400">ISAP & MCNP · Visitor Portal</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <InstallHeaderButton />
-              <button onClick={() => router.push('/login')} className="text-xs font-semibold text-slate-500 hover:text-slate-800 px-3 py-1.5 rounded-xl hover:bg-slate-100 transition-all">
-                Log in
-              </button>
-              <button onClick={() => router.push('/signup')} className="text-xs font-semibold text-white bg-slate-800 hover:bg-slate-900 px-3 py-1.5 rounded-xl transition-all">
-                Sign up
-              </button>
-            </div>
+      {/* Install banner */}
+      {showInstall && (
+        <div style={{
+          position: 'fixed', bottom: 80, left: 16, right: 16, zIndex: 100,
+          backgroundColor: '#1e293b', border: '1px solid #334155',
+          borderRadius: 16, padding: '14px 16px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        }}>
+          <div>
+            <p style={{ color: '#f1f5f9', fontSize: 13, fontWeight: 600 }}>Install Campus Help Desk</p>
+            <p style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>Add to Home Screen for quick access</p>
           </div>
-        </header>
-
-        {/* Desktop hero + chat */}
-        <section
-          className={`flex flex-col transition-all duration-300 ${fullscreen ? 'fixed inset-0 z-50 bg-white' : ''}`}
-          style={!fullscreen ? { minHeight: 'calc(100vh - 52px)' } : { height: '100vh' }}
-        >
-          <div className={`flex flex-col w-full ${fullscreen ? 'flex-1 overflow-hidden' : 'flex-1 max-w-3xl mx-auto px-6 py-8'}`}>
-
-            {!chatStarted && !fullscreen && (
-              <div className="text-center mb-8 mt-2">
-                <div className="flex items-center justify-center gap-2 mb-4">
-                  <span className="flex items-center gap-1.5 bg-red-50 border border-red-100 px-3 py-1 rounded-full text-xs font-bold text-red-700">
-                    <span className="w-1.5 h-1.5 bg-red-400 rounded-full" />ISAP
-                  </span>
-                  <span className="flex items-center gap-1.5 bg-blue-50 border border-blue-100 px-3 py-1 rounded-full text-xs font-bold text-blue-700">
-                    <span className="w-1.5 h-1.5 bg-blue-400 rounded-full" />MCNP
-                  </span>
-                </div>
-                <h1 className="text-4xl font-bold text-slate-900 mb-3">How can I help you?</h1>
-                <p className="text-slate-500 text-base max-w-md mx-auto">
-                  Ask anything about courses, tuition, enrollment, and campus life. No account needed.
-                </p>
-              </div>
-            )}
-
-            <div className={`flex flex-col bg-white overflow-hidden ${fullscreen ? 'flex-1 rounded-none border-none' : 'flex-1 rounded-2xl border border-slate-200 shadow-sm'}`}>
-
-              {/* Chat header */}
-              <div className="flex items-center gap-3 px-5 py-3.5 border-b border-slate-100 shrink-0">
-                <div className="w-9 h-9 bg-slate-800 rounded-xl flex items-center justify-center shrink-0">
-                  <Bot size={18} className="text-white" />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-slate-900">Campus AI Assistant</p>
-                  <p className="text-[10px] text-slate-400">Powered by Gemini AI · ISAP & MCNP</p>
-                </div>
-                <div className="ml-auto flex items-center gap-3">
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-                    <span className="text-xs text-slate-400 font-medium">Online</span>
-                  </div>
-                  <button
-                    onClick={() => setFullscreen(f => !f)}
-                    className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-slate-100 transition-all"
-                    title={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-                  >
-                    {fullscreen ? <Minimize2 size={15} className="text-slate-500" /> : <Maximize2 size={15} className="text-slate-500" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Messages */}
-              <div
-                className="overflow-y-auto p-5 space-y-4"
-                style={{
-                  flex: fullscreen ? '1' : undefined,
-                  minHeight: fullscreen ? '0' : chatStarted ? '280px' : '200px',
-                  maxHeight: fullscreen ? 'none' : chatStarted ? '420px' : '220px',
-                  backgroundColor: '#f8fafc',
-                }}
-              >
-                {messages.map(msg => (
-                  <div key={msg.id} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${msg.role === 'ai' ? 'bg-slate-800' : 'bg-slate-700'}`}>
-                      {msg.role === 'ai' ? <Bot size={14} className="text-white" /> : <User size={14} className="text-white" />}
-                    </div>
-                    <div className={`max-w-[80%] rounded-2xl px-4 py-3 shadow-sm ${msg.role === 'ai' ? 'bg-white border border-slate-100 rounded-tl-sm' : 'bg-slate-800 rounded-tr-sm'}`}>
-                      {msg.role === 'ai' ? renderMessage(msg.content) : <p className="text-sm text-white leading-relaxed">{msg.content}</p>}
-                      {mounted && msg.timestamp.getTime() !== 0 && (
-                        <p className={`text-[10px] mt-1.5 ${msg.role === 'ai' ? 'text-slate-300' : 'text-slate-400'}`} suppressHydrationWarning>
-                          {formatTime(msg.timestamp)}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {loading && (
-                  <div className="flex gap-3">
-                    <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center shrink-0">
-                      <Bot size={14} className="text-white" />
-                    </div>
-                    <div className="bg-white border border-slate-100 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm">
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                        <div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                      </div>
-                    </div>
-                  </div>
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-
-              {/* Quick questions */}
-              {!chatStarted && (
-                <div className="px-5 py-3 border-t border-slate-100 bg-white shrink-0">
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <Sparkles size={12} className="text-slate-400" />
-                    <p className="text-xs font-semibold text-slate-400">Try asking</p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {quickQuestions.map(q => (
-                      <button key={q} onClick={() => sendMessage(q)}
-                        className="text-xs font-medium px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all border border-slate-200">
-                        {q}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Input */}
-              <div className="px-5 py-4 bg-white border-t border-slate-100 shrink-0">
-                <form onSubmit={e => { e.preventDefault(); sendMessage(input) }}
-                  className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3">
-                  <input
-                    ref={inputRef}
-                    type="text"
-                    value={input}
-                    onChange={e => setInput(e.target.value)}
-                    placeholder="Ask anything about ISAP or MCNP..."
-                    disabled={loading}
-                    className="flex-1 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none disabled:opacity-50 bg-transparent"
-                  />
-                  <button type="submit" disabled={loading || !input.trim()}
-                    className="w-9 h-9 rounded-xl flex items-center justify-center text-white bg-slate-800 hover:bg-slate-900 transition-all disabled:opacity-40 shrink-0">
-                    <Send size={15} />
-                  </button>
-                </form>
-              </div>
-            </div>
-
-            {!chatStarted && !fullscreen && (
-              <button
-                onClick={() => contentRef.current?.scrollIntoView({ behavior: 'smooth' })}
-                className="flex flex-col items-center gap-1 mt-5 text-slate-400 hover:text-slate-600 transition-all animate-bounce mx-auto"
-              >
-                <span className="text-xs font-medium">Explore Campus Info</span>
-                <ChevronDown size={16} />
-              </button>
-            )}
-          </div>
-        </section>
-
-        {/* Desktop content below */}
-        <div ref={contentRef} className="bg-slate-50">
-          {announcements.length > 0 && (
-            <div className="max-w-3xl mx-auto px-6 pt-8 space-y-2">
-              {announcements.map(a => {
-                const cfg = typeConfig[a.type] || typeConfig.general
-                return (
-                  <div key={a.id} className={`rounded-xl px-4 py-3 flex items-start gap-3 ${cfg.bg}`}>
-                    <Megaphone size={14} className={`shrink-0 mt-0.5 ${cfg.text}`} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`text-xs font-bold ${cfg.text}`}>{cfg.label}</span>
-                        <span className="text-xs font-bold text-slate-700">{a.title}</span>
-                      </div>
-                      <p className="text-xs text-slate-600 mt-0.5 line-clamp-1">{a.content}</p>
-                    </div>
-                    <span className="text-[10px] text-slate-400 shrink-0">{timeAgo(a.created_at)}</span>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-
-          <div className="max-w-3xl mx-auto px-6 py-8 space-y-8">
-            <ExploreSection />
-
-            {announcements.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-4">Latest Announcements</p>
-                <div className="space-y-3">
-                  {announcements.map(a => {
-                    const cfg = typeConfig[a.type] || typeConfig.general
-                    return (
-                      <div key={a.id} className="bg-white rounded-2xl border border-slate-100 p-5">
-                        <div className="flex items-start gap-3">
-                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${cfg.bg}`}>
-                            <Bell size={15} className={cfg.text} />
-                          </div>
-                          <div className="flex-1">
-                            <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
-                            <p className="text-sm font-bold text-slate-900 mt-1">{a.title}</p>
-                            <p className="text-xs text-slate-500 mt-1 leading-relaxed">{a.content}</p>
-                            <div className="flex items-center gap-1.5 mt-2">
-                              <Clock size={11} className="text-slate-400" />
-                              <p className="text-xs text-slate-400">{timeAgo(a.created_at)}</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            <InstallBanner />
-            <CTASection />
-
-            <div className="text-center pb-4">
-              <p className="text-xs text-slate-400">Smart Campus Help Desk · ISAP and MCNP</p>
-              <p className="text-xs text-slate-300 mt-1">Alimanao, Penablanca, Cagayan, Philippines</p>
-            </div>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <button onClick={() => setShowInstall(false)}
+              style={{ color: '#64748b', fontSize: 12, background: 'none', border: 'none', cursor: 'pointer' }}>
+              Later
+            </button>
+            <button onClick={handleInstall}
+              style={{
+                color: '#fff', fontSize: 12, fontWeight: 600,
+                padding: '6px 14px', borderRadius: 8,
+                background: 'linear-gradient(135deg,#dc2626,#2563eb)',
+                border: 'none', cursor: 'pointer',
+              }}>
+              Install
+            </button>
           </div>
         </div>
-      </div>
-    </>
+      )}
+    </div>
   )
 }
