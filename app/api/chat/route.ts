@@ -61,7 +61,7 @@ async function callGemini(
 
 export async function POST(request: Request) {
   try {
-    const { message, school, conversationHistory } = await request.json()
+    const { message, school, conversationHistory, imageBase64, imageMimeType } = await request.json()
 
     if (!process.env.GEMINI_API_KEY) {
       return NextResponse.json({ error: 'AI not configured' }, { status: 500 })
@@ -181,6 +181,23 @@ RULES:
 - Never say "I don't know" — always try to find the answer`
 
     // ── 4. Build conversation ─────────────────────────────────────────────
+    // Build the last user message — support image
+    const lastUserParts: object[] = []
+    if (imageBase64 && imageMimeType) {
+      lastUserParts.push({
+        inline_data: {
+          mime_type: imageMimeType,
+          data: imageBase64,
+        }
+      })
+    }
+    if (message) {
+      lastUserParts.push({ text: message })
+    }
+    if (lastUserParts.length === 0) {
+      lastUserParts.push({ text: 'Describe what you see in this image.' })
+    }
+
     const contents = [
       { role: 'user', parts: [{ text: systemPrompt }] },
       {
@@ -191,7 +208,7 @@ RULES:
         role: m.role === 'model' ? 'model' : 'user',
         parts: [{ text: m.content }]
       })),
-      { role: 'user', parts: [{ text: message }] }
+      { role: 'user', parts: lastUserParts }
     ]
 
     // ── 5. Try models in order ────────────────────────────────────────────

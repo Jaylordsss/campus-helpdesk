@@ -3,9 +3,9 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { createClient } from '@/src/lib/supabase/client'
 import {
-  Send, Bot, Loader2, Plus, Mic,
+  Send, Bot, Loader2, Plus,
   MessageSquare, Pencil, Trash2, Check, X,
-  Search, Pin, Image, Camera
+  Search, Pin, Image, Camera, Square, Mic
 } from 'lucide-react'
 
 type Message = {
@@ -38,12 +38,18 @@ export default function ChatPage() {
   const [longPressTimer, setLongPressTimer] = useState<ReturnType<typeof setTimeout> | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [showPlusMenu, setShowPlusMenu] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  const [recordingSeconds, setRecordingSeconds] = useState(0)
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const cameraRef = useRef<HTMLInputElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
 
   const isISAP = profile?.school === 'ISAP'
   const accentColor = isISAP ? '#dc2626' : '#2563eb'
@@ -66,8 +72,7 @@ export default function ChatPage() {
         .from('profiles').select('name, school, id').eq('id', user.id).single()
       if (data) setProfile({ ...data, id: user.id })
       await fetchSessions()
-      // Auto-focus input on mount
-      setTimeout(() => inputRef.current?.focus(), 300)
+      setTimeout(() => inputRef.current?.focus(), 400)
     }
     init()
   }, [fetchSessions])
@@ -77,10 +82,16 @@ export default function ChatPage() {
   }, [messages, loading])
 
   useEffect(() => {
-    if (showHistory && searchRef.current) {
-      setTimeout(() => searchRef.current?.focus(), 200)
-    }
+    if (showHistory) setTimeout(() => searchRef.current?.focus(), 200)
   }, [showHistory])
+
+  // Cleanup recording on unmount
+  useEffect(() => {
+    return () => {
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current)
+      mediaRecorderRef.current?.stop()
+    }
+  }, [])
 
   const createNewSession = async () => {
     if (!profile) return
@@ -126,10 +137,7 @@ export default function ChatPage() {
   const deleteSession = async (id: string) => {
     const supabase = createClient()
     await supabase.from('chat_sessions').delete().eq('id', id)
-    if (activeSessionId === id) {
-      setActiveSessionId(null)
-      setMessages([])
-    }
+    if (activeSessionId === id) { setActiveSessionId(null); setMessages([]) }
     setLongPressId(null)
     await fetchSessions()
   }
@@ -138,9 +146,7 @@ export default function ChatPage() {
     if (!editTitle.trim()) return
     const supabase = createClient()
     await supabase.from('chat_sessions').update({ title: editTitle.trim() }).eq('id', id)
-    setEditingId(null)
-    setEditTitle('')
-    setLongPressId(null)
+    setEditingId(null); setEditTitle(''); setLongPressId(null)
     await fetchSessions()
   }
 
@@ -161,8 +167,78 @@ export default function ChatPage() {
     setLongPressTimer(null)
   }
 
-  const sendMessage = async () => {
-    const userMessage = input.trim()
+  // ── Recording ─────────────────────────────────────────────────────────────
+  const startRecording = () => {
+    // Use Web Speech API for real transcription
+    const SpeechRecognition =
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+
+    if (!SpeechRecognition) {
+      alert('Voice input is not supported on this browser. Please use Chrome.')
+      return
+    }
+
+    const recognition = new SpeechRecognition()
+    recognition.lang = 'en-PH'
+    recognition.continuous = false
+    recognition.interimResults = true
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onresult = (e: any) => {
+      const transcript = Array.from(e.results)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((r: any) => r[0].transcript)
+        .join('')
+      setInput(transcript)
+    }
+
+    recognition.onend = () => {
+      setIsRecording(false)
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current)
+      // Auto-send after voice input
+      setTimeout(() => {
+        setInput(prev => {
+          if (prev.trim()) {
+            sendMessage(prev.trim())
+            return ''
+          }
+          return prev
+        })
+      }, 300)
+    }
+
+    recognition.onerror = () => {
+      setIsRecording(false)
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current)
+    }
+
+    recognition.start()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(window as any)._speechRecognition = recognition
+    setIsRecording(true)
+    setRecordingSeconds(0)
+    setAudioBlob(null)
+    recordingTimerRef.current = setInterval(() => setRecordingSeconds(s => s + 1), 1000)
+  }
+
+  const stopRecording = () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const recognition = (window as any)._speechRecognition
+    if (recognition) recognition.stop()
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current)
+    setIsRecording(false)
+  }
+
+  const formatRecordingTime = (s: number) => {
+    const m = Math.floor(s / 60)
+    const sec = s % 60
+    return `${m}:${sec.toString().padStart(2, '0')}`
+  }
+
+  // ── Send message ──────────────────────────────────────────────────────────
+  const sendMessage = async (overrideText?: string) => {
+    const userMessage = (overrideText || input).trim()
     if ((!userMessage && !imagePreview) || loading) return
 
     let sessionId = activeSessionId
@@ -179,7 +255,7 @@ export default function ChatPage() {
       setSessions(prev => [data, ...prev])
     }
 
-    setInput('')
+    if (!overrideText) setInput('')
     const isFirstMessage = messages.length === 0
     const newMsg: Message = { role: 'user', content: userMessage }
     if (imagePreview) newMsg.image = imagePreview
@@ -194,14 +270,27 @@ export default function ChatPage() {
       content: m.content,
     }))
 
+    // Convert imagePreview (base64 data URL) to raw base64
+    let imageBase64: string | null = null
+    let imageMimeType: string | null = null
+    if (newMsg.image) {
+      const match = newMsg.image.match(/^data:(.+);base64,(.+)$/)
+      if (match) {
+        imageMimeType = match[1]
+        imageBase64 = match[2]
+      }
+    }
+
     const tryFetch = async (retryCount = 0): Promise<string> => {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: userMessage || 'Describe this image',
+          message: userMessage || 'What do you see in this image? Describe it in detail.',
           school: profile?.school || 'ISAP',
           conversationHistory: history,
+          imageBase64,
+          imageMimeType,
         }),
       })
       const data = await res.json()
@@ -217,9 +306,7 @@ export default function ChatPage() {
       const response = await tryFetch()
       const finalMessages: Message[] = [...newMessages, { role: 'assistant', content: response }]
       setMessages(finalMessages)
-      if (sessionId) {
-        await saveMessages(sessionId, finalMessages, isFirstMessage ? userMessage : undefined)
-      }
+      if (sessionId) await saveMessages(sessionId, finalMessages, isFirstMessage ? userMessage : undefined)
     } catch {
       try {
         const fallbackRes = await fetch('/api/chat', {
@@ -238,7 +325,7 @@ export default function ChatPage() {
       }
     } finally {
       setLoading(false)
-      inputRef.current?.focus()
+      if (!overrideText) inputRef.current?.focus()
     }
   }
 
@@ -288,13 +375,14 @@ export default function ChatPage() {
   )
   const pinnedSessions = filteredSessions.filter(s => s.pinned)
   const recentSessions = filteredSessions.filter(s => !s.pinned)
-
   const groupedRecent = recentSessions.reduce((groups: Record<string, ChatSession[]>, s) => {
     const label = formatDate(s.updated_at)
     if (!groups[label]) groups[label] = []
     groups[label].push(s)
     return groups
   }, {})
+
+  const hasTyped = input.trim().length > 0 || !!imagePreview
 
   const SUGGESTED = [
     'What courses does this school offer?',
@@ -304,45 +392,45 @@ export default function ChatPage() {
   ]
 
   return (
-    <div className="flex flex-col relative" style={{ height: 'calc(100dvh - 56px)', backgroundColor: 'var(--bg)' }}>
+    <div
+      className="flex flex-col"
+      style={{ height: 'calc(100dvh - 56px)', backgroundColor: 'var(--bg)', overflow: 'hidden' }}
+    >
 
       {/* ── HISTORY OVERLAY ── */}
       {showHistory && (
         <div
           className="absolute inset-0 z-50 flex flex-col"
-          style={{ backgroundColor: 'var(--bg-card)' }}
+          style={{ backgroundColor: 'var(--bg-card)', top: 0, bottom: 0, left: 0, right: 0, position: 'absolute' }}
         >
-          {/* History header */}
           <div className="flex items-center justify-between px-4 py-4 shrink-0"
             style={{ borderBottom: '1px solid var(--border)' }}>
             <p className="text-base font-bold" style={{ color: 'var(--text)' }}>Chat history</p>
             <button
               onClick={() => { setShowHistory(false); setSearchQuery(''); setLongPressId(null) }}
-              className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-black/5 transition-all"
+              className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-black/5 transition-all"
               style={{ color: 'var(--text-muted)' }}
             >
               <X size={20} />
             </button>
           </div>
 
-          {/* New chat button */}
           <button
             onClick={createNewSession}
             className="flex items-center gap-3 mx-4 mt-3 px-4 py-3 rounded-2xl transition-all hover:bg-black/5"
             style={{ border: '1px solid var(--border)' }}
           >
-            <div className="w-9 h-9 rounded-full flex items-center justify-center"
+            <div className="w-8 h-8 rounded-full flex items-center justify-center"
               style={{ backgroundColor: accentColor }}>
-              <Plus size={18} className="text-white" />
+              <Plus size={16} className="text-white" />
             </div>
             <span className="text-sm font-semibold" style={{ color: 'var(--text)' }}>New chat</span>
           </button>
 
-          {/* Search */}
           <div className="px-4 mt-3 shrink-0">
             <div className="flex items-center gap-2 px-3 py-2.5 rounded-2xl"
               style={{ backgroundColor: 'var(--bg)', border: '1px solid var(--border)' }}>
-              <Search size={16} style={{ color: 'var(--text-faint)' }} />
+              <Search size={15} style={{ color: 'var(--text-faint)' }} />
               <input
                 ref={searchRef}
                 value={searchQuery}
@@ -353,29 +441,23 @@ export default function ChatPage() {
               />
               {searchQuery && (
                 <button onClick={() => setSearchQuery('')}>
-                  <X size={14} style={{ color: 'var(--text-faint)' }} />
+                  <X size={13} style={{ color: 'var(--text-faint)' }} />
                 </button>
               )}
             </div>
           </div>
 
-          {/* Session list */}
-          <div className="flex-1 overflow-y-auto px-4 mt-3 pb-6">
-
-            {/* Pinned */}
+          <div className="flex-1 overflow-y-auto px-4 mt-3 pb-8">
             {pinnedSessions.length > 0 && (
               <div className="mb-4">
                 <p className="text-[10px] font-bold uppercase tracking-widest mb-2 px-1"
                   style={{ color: 'var(--text-faint)' }}>📌 Pinned</p>
                 {pinnedSessions.map(session => (
-                  <SessionItem
-                    key={session.id}
-                    session={session}
+                  <SessionItem key={session.id} session={session}
                     isActive={activeSessionId === session.id}
                     isLongPressed={longPressId === session.id}
                     isEditing={editingId === session.id}
-                    editTitle={editTitle}
-                    accentColor={accentColor}
+                    editTitle={editTitle} accentColor={accentColor}
                     onTap={() => longPressId ? setLongPressId(null) : loadSession(session)}
                     onLongPressStart={() => handleLongPressStart(session.id)}
                     onLongPressEnd={handleLongPressEnd}
@@ -391,20 +473,16 @@ export default function ChatPage() {
               </div>
             )}
 
-            {/* Recent grouped by date */}
             {Object.entries(groupedRecent).map(([label, groupSessions]) => (
               <div key={label} className="mb-4">
                 <p className="text-[10px] font-bold uppercase tracking-widest mb-2 px-1"
                   style={{ color: 'var(--text-faint)' }}>{label}</p>
                 {groupSessions.map(session => (
-                  <SessionItem
-                    key={session.id}
-                    session={session}
+                  <SessionItem key={session.id} session={session}
                     isActive={activeSessionId === session.id}
                     isLongPressed={longPressId === session.id}
                     isEditing={editingId === session.id}
-                    editTitle={editTitle}
-                    accentColor={accentColor}
+                    editTitle={editTitle} accentColor={accentColor}
                     onTap={() => longPressId ? setLongPressId(null) : loadSession(session)}
                     onLongPressStart={() => handleLongPressStart(session.id)}
                     onLongPressEnd={handleLongPressEnd}
@@ -422,7 +500,7 @@ export default function ChatPage() {
 
             {filteredSessions.length === 0 && (
               <div className="text-center py-12">
-                <MessageSquare size={32} className="mx-auto mb-3" style={{ color: 'var(--text-faint)' }} />
+                <MessageSquare size={28} className="mx-auto mb-3" style={{ color: 'var(--text-faint)' }} />
                 <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
                   {searchQuery ? 'No chats found' : 'No chat history yet'}
                 </p>
@@ -434,19 +512,16 @@ export default function ChatPage() {
 
       {/* ── TOP BAR ── */}
       <div className="flex items-center justify-between px-4 py-3 shrink-0"
-        style={{ backgroundColor: 'var(--bg)', borderBottom: messages.length > 0 ? '1px solid var(--border)' : 'none' }}>
-
-        {/* History icon — Gemini style */}
+        style={{ borderBottom: '1px solid var(--border)', backgroundColor: 'var(--bg-card)' }}>
         <button
           onClick={() => setShowHistory(true)}
           className="w-10 h-10 rounded-full flex items-center justify-center transition-all hover:bg-black/5 relative"
           style={{ color: 'var(--text-muted)' }}
-          title="Chat history"
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-            <line x1="9" y1="10" x2="15" y2="10"/>
-            <line x1="9" y1="14" x2="13" y2="14"/>
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            <line x1="9" y1="10" x2="15" y2="10" />
+            <line x1="9" y1="14" x2="13" y2="14" />
           </svg>
           {sessions.length > 0 && (
             <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center text-white"
@@ -456,35 +531,29 @@ export default function ChatPage() {
           )}
         </button>
 
-        {/* Title */}
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg flex items-center justify-center"
             style={{ backgroundColor: isISAP ? '#fee2e2' : '#dbeafe' }}>
             <Bot size={14} style={{ color: accentColor }} />
           </div>
-          <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>
-            Campus AI
-          </p>
+          <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>Campus AI</p>
         </div>
 
-        {/* New chat */}
         <button
           onClick={createNewSession}
           className="w-10 h-10 rounded-full flex items-center justify-center transition-all hover:bg-black/5"
           style={{ color: 'var(--text-muted)' }}
-          title="New chat"
         >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
           </svg>
         </button>
       </div>
 
       {/* ── MESSAGES ── */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+      <div className="flex-1 overflow-y-auto px-4 py-4">
 
-        {/* Welcome */}
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full gap-5 pb-4">
             <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
@@ -492,28 +561,17 @@ export default function ChatPage() {
               <Bot size={32} style={{ color: accentColor }} />
             </div>
             <div className="text-center">
-              <h2 className="text-xl font-bold mb-1.5" style={{ color: 'var(--text)' }}>
+              <h2 className="text-xl font-bold mb-1" style={{ color: 'var(--text)' }}>
                 Hi {profile?.name?.split(' ')[0] || 'there'}! 👋
               </h2>
-              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                Ask me anything
-              </p>
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Ask me anything</p>
             </div>
-
-            {/* Suggestion chips — horizontal scroll like Gemini */}
             <div className="w-full overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-              <div className="flex gap-2 px-1" style={{ width: 'max-content' }}>
+              <div className="flex gap-2" style={{ width: 'max-content', padding: '0 2px' }}>
                 {SUGGESTED.map((q, i) => (
-                  <button
-                    key={i}
-                    onClick={() => { setInput(q); inputRef.current?.focus() }}
-                    className="px-4 py-2.5 rounded-2xl text-xs font-semibold whitespace-nowrap transition-all hover:shadow-sm"
-                    style={{
-                      backgroundColor: 'var(--bg-card)',
-                      border: '1px solid var(--border)',
-                      color: 'var(--text-muted)',
-                    }}
-                  >
+                  <button key={i} onClick={() => { setInput(q); inputRef.current?.focus() }}
+                    className="px-4 py-2.5 rounded-2xl text-xs font-semibold whitespace-nowrap"
+                    style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
                     {q}
                   </button>
                 ))}
@@ -522,75 +580,68 @@ export default function ChatPage() {
           </div>
         )}
 
-        {/* Messages */}
-        {messages.map((msg, i) => (
-          <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            {msg.role === 'assistant' && (
-              <div className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-1"
-                style={{ backgroundColor: isISAP ? '#fee2e2' : '#dbeafe' }}>
-                <Bot size={14} style={{ color: accentColor }} />
-              </div>
-            )}
-            <div className="max-w-[80%] space-y-1">
-              {msg.image && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={msg.image} alt="uploaded" className="rounded-2xl max-w-full"
-                  style={{ maxHeight: 200, objectFit: 'cover' }} />
+        <div className="space-y-4">
+          {messages.map((msg, i) => (
+            <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              {msg.role === 'assistant' && (
+                <div className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-1"
+                  style={{ backgroundColor: isISAP ? '#fee2e2' : '#dbeafe' }}>
+                  <Bot size={14} style={{ color: accentColor }} />
+                </div>
               )}
-              {msg.content && (
-                <div
-                  className="rounded-2xl px-4 py-3 text-sm leading-relaxed"
-                  style={msg.role === 'user' ? {
-                    backgroundColor: accentColor,
-                    color: '#ffffff',
-                    borderBottomRightRadius: '6px',
-                  } : {
-                    backgroundColor: 'var(--bg-card)',
-                    color: 'var(--text)',
-                    border: '1px solid var(--border)',
-                    borderBottomLeftRadius: '6px',
-                  }}
-                >
-                  {msg.role === 'assistant' ? (
-                    <div dangerouslySetInnerHTML={{ __html: formatMessage(msg.content) }} style={{ lineHeight: '1.6' }} />
-                  ) : (
-                    <p style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</p>
-                  )}
+              <div className="max-w-[80%] space-y-1">
+                {msg.image && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={msg.image} alt="uploaded" className="rounded-2xl w-full"
+                    style={{ maxHeight: 200, objectFit: 'cover' }} />
+                )}
+                {msg.content && (
+                  <div className="rounded-2xl px-4 py-3 text-sm"
+                    style={msg.role === 'user' ? {
+                      backgroundColor: accentColor, color: '#fff', borderBottomRightRadius: 6,
+                    } : {
+                      backgroundColor: 'var(--bg-card)', color: 'var(--text)',
+                      border: '1px solid var(--border)', borderBottomLeftRadius: 6,
+                    }}>
+                    {msg.role === 'assistant'
+                      ? <div dangerouslySetInnerHTML={{ __html: formatMessage(msg.content) }} style={{ lineHeight: 1.6 }} />
+                      : <p style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</p>
+                    }
+                  </div>
+                )}
+              </div>
+              {msg.role === 'user' && (
+                <div className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-1 text-white text-xs font-bold"
+                  style={{ backgroundColor: accentColor }}>
+                  {profile?.name?.charAt(0)?.toUpperCase() || 'U'}
                 </div>
               )}
             </div>
-            {msg.role === 'user' && (
-              <div className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-1 text-white text-xs font-bold"
-                style={{ backgroundColor: accentColor }}>
-                {profile?.name?.charAt(0)?.toUpperCase() || 'U'}
-              </div>
-            )}
-          </div>
-        ))}
+          ))}
 
-        {/* Loading */}
-        {loading && (
-          <div className="flex gap-3 justify-start">
-            <div className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0"
-              style={{ backgroundColor: isISAP ? '#fee2e2' : '#dbeafe' }}>
-              <Bot size={14} style={{ color: accentColor }} />
-            </div>
-            <div className="rounded-2xl px-4 py-3 border"
-              style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)', borderBottomLeftRadius: '6px' }}>
-              <div className="flex items-center gap-1.5">
-                {[0, 1, 2].map(i => (
-                  <div key={i} className="w-1.5 h-1.5 rounded-full animate-bounce"
-                    style={{ backgroundColor: accentColor, animationDelay: `${i * 0.15}s` }} />
-                ))}
+          {loading && (
+            <div className="flex gap-3">
+              <div className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0"
+                style={{ backgroundColor: isISAP ? '#fee2e2' : '#dbeafe' }}>
+                <Bot size={14} style={{ color: accentColor }} />
+              </div>
+              <div className="rounded-2xl px-4 py-3 border"
+                style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)', borderBottomLeftRadius: 6 }}>
+                <div className="flex items-center gap-1.5">
+                  {[0, 1, 2].map(i => (
+                    <div key={i} className="w-1.5 h-1.5 rounded-full animate-bounce"
+                      style={{ backgroundColor: accentColor, animationDelay: `${i * 0.15}s` }} />
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         <div ref={bottomRef} />
       </div>
 
-      {/* ── INPUT AREA — Gemini style ── */}
+      {/* ── INPUT AREA ── */}
       <div className="shrink-0 px-3 pb-4 pt-2" style={{ backgroundColor: 'var(--bg)' }}>
 
         {/* Image preview */}
@@ -598,119 +649,127 @@ export default function ChatPage() {
           <div className="relative mb-2 w-16 h-16 ml-1">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={imagePreview} alt="preview" className="w-16 h-16 rounded-xl object-cover" />
-            <button
-              onClick={() => setImagePreview(null)}
-              className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-slate-800 rounded-full flex items-center justify-center"
-            >
+            <button onClick={() => setImagePreview(null)}
+              className="absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center"
+              style={{ backgroundColor: 'var(--text)' }}>
               <X size={10} className="text-white" />
             </button>
           </div>
         )}
 
-        {/* Input box */}
-        <div className="rounded-3xl border flex flex-col overflow-hidden"
+        {/* Plus menu — appears ABOVE input, not overlaying */}
+        {showPlusMenu && (
+          <div className="mb-2 rounded-2xl border overflow-hidden"
+            style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+            <button
+              onClick={() => { fileRef.current?.click() }}
+              className="flex items-center gap-3 w-full px-4 py-3 text-sm font-semibold hover:bg-black/5 transition-all"
+              style={{ color: 'var(--text)' }}
+            >
+              <div className="w-8 h-8 rounded-full flex items-center justify-center"
+                style={{ backgroundColor: isISAP ? '#fee2e2' : '#dbeafe' }}>
+                <Image size={16} style={{ color: accentColor }} />
+              </div>
+              Upload photo
+            </button>
+            <button
+              onClick={() => { cameraRef.current?.click() }}
+              className="flex items-center gap-3 w-full px-4 py-3 text-sm font-semibold hover:bg-black/5 transition-all"
+              style={{ color: 'var(--text)', borderTop: '1px solid var(--border)' }}
+            >
+              <div className="w-8 h-8 rounded-full flex items-center justify-center"
+                style={{ backgroundColor: isISAP ? '#fee2e2' : '#dbeafe' }}>
+                <Camera size={16} style={{ color: accentColor }} />
+              </div>
+              Take photo
+            </button>
+          </div>
+        )}
+
+        {/* Recording UI */}
+        {isRecording && (
+          <div className="mb-2 rounded-2xl border flex items-center gap-3 px-4 py-3"
+            style={{ backgroundColor: 'var(--bg-card)', borderColor: accentColor }}>
+            <div className="w-3 h-3 rounded-full animate-pulse shrink-0" style={{ backgroundColor: '#dc2626' }} />
+            <div className="flex-1">
+              <p className="text-sm font-bold" style={{ color: accentColor }}>
+                Listening... {formatRecordingTime(recordingSeconds)}
+              </p>
+              {input && (
+                <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>
+                  "{input}"
+                </p>
+              )}
+            </div>
+            <button
+              onClick={stopRecording}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white"
+              style={{ backgroundColor: '#dc2626' }}
+            >
+              <Square size={11} />
+              Stop & Send
+            </button>
+          </div>
+        )}
+
+        {/* Main input box */}
+        <div className="rounded-3xl border flex items-end gap-2 px-3 py-2"
           style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
 
-          {/* Text area */}
-          <div className="px-4 pt-3 pb-2">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={e => {
-                setInput(e.target.value)
-                e.target.style.height = 'auto'
-                e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px'
-              }}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask anything..."
-              rows={1}
-              autoFocus
-              className="w-full text-sm resize-none focus:outline-none bg-transparent"
-              style={{ color: 'var(--text)', lineHeight: '1.5', maxHeight: '120px' }}
-            />
-          </div>
+          {/* Plus button */}
+          <button
+            onClick={() => setShowPlusMenu(m => !m)}
+            className="w-9 h-9 rounded-full flex items-center justify-center transition-all shrink-0 mb-0.5"
+            style={{
+              backgroundColor: showPlusMenu ? accentColor : 'var(--bg)',
+              color: showPlusMenu ? '#fff' : 'var(--text-muted)',
+              border: '1px solid var(--border)',
+            }}
+          >
+            <Plus size={18} style={{ transform: showPlusMenu ? 'rotate(45deg)' : 'none', transition: 'transform 0.2s' }} />
+          </button>
 
-          {/* Bottom row — Plus | spacer | Mic/Send */}
-          <div className="flex items-center justify-between px-2 pb-2">
+          {/* Textarea */}
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={e => {
+              setInput(e.target.value)
+              e.target.style.height = 'auto'
+              e.target.style.height = Math.min(e.target.scrollHeight, 100) + 'px'
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder="Ask anything..."
+            rows={1}
+            autoFocus
+            className="flex-1 text-sm resize-none focus:outline-none bg-transparent py-2"
+            style={{ color: 'var(--text)', lineHeight: 1.5, maxHeight: 100, minHeight: 36 }}
+          />
 
-            {/* Plus button */}
-            <div className="relative">
-              <button
-                onClick={() => setShowPlusMenu(m => !m)}
-                className="w-9 h-9 rounded-full flex items-center justify-center transition-all hover:bg-black/5"
-                style={{ color: 'var(--text-muted)' }}
-              >
-                <Plus size={20} />
-              </button>
-
-              {/* Plus menu — image/camera options */}
-              {showPlusMenu && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setShowPlusMenu(false)} />
-                  <div className="absolute bottom-12 left-0 z-50 rounded-2xl border overflow-hidden shadow-xl"
-                    style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)', minWidth: 180 }}>
-                    <button
-                      onClick={() => { fileRef.current?.click(); setShowPlusMenu(false) }}
-                      className="flex items-center gap-3 w-full px-4 py-3 text-sm font-semibold hover:bg-black/5 transition-all"
-                      style={{ color: 'var(--text)' }}
-                    >
-                      <Image size={18} style={{ color: accentColor }} />
-                      Upload image
-                    </button>
-                    <button
-                      onClick={() => { cameraRef.current?.click(); setShowPlusMenu(false) }}
-                      className="flex items-center gap-3 w-full px-4 py-3 text-sm font-semibold hover:bg-black/5 transition-all"
-                      style={{ color: 'var(--text)', borderTop: '1px solid var(--border)' }}
-                    >
-                      <Camera size={18} style={{ color: accentColor }} />
-                      Take photo
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Right side — Mic or Send */}
-            <div className="flex items-center gap-1">
-              {!input.trim() && !imagePreview ? (
-                /* Mic button when nothing typed */
-                <button
-                  className="w-9 h-9 rounded-full flex items-center justify-center transition-all hover:bg-black/5"
-                  style={{ color: 'var(--text-muted)' }}
-                  onClick={() => {
-                    // Web Speech API
-                    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-                      const recognition = new SpeechRecognition()
-                      recognition.lang = 'en-PH'
-                      recognition.onresult = (e: { results: { transcript: string }[][] }) => {
-                        const transcript = e.results[0][0].transcript
-                        setInput(transcript)
-                        inputRef.current?.focus()
-                      }
-                      recognition.start()
-                    }
-                  }}
-                >
-                  <Mic size={20} />
-                </button>
-              ) : (
-                /* Send button when typing */
-                <button
-                  onClick={sendMessage}
-                  disabled={loading}
-                  className="w-9 h-9 rounded-full flex items-center justify-center transition-all disabled:opacity-40"
-                  style={{ backgroundColor: accentColor }}
-                >
-                  {loading
-                    ? <Loader2 size={16} className="text-white animate-spin" />
-                    : <Send size={16} className="text-white" />
-                  }
-                </button>
-              )}
-            </div>
-          </div>
+          {/* Mic (when empty) or Send (when typing) */}
+          {!hasTyped && !isRecording && !audioBlob ? (
+            <button
+              onClick={startRecording}
+              className="w-9 h-9 rounded-full flex items-center justify-center transition-all shrink-0 mb-0.5"
+              style={{ backgroundColor: 'var(--bg)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}
+            >
+              <Mic size={18} />
+            </button>
+          ) : !isRecording && !audioBlob ? (
+            <button
+              onClick={() => sendMessage()}
+              disabled={loading}
+              className="w-9 h-9 rounded-full flex items-center justify-center transition-all shrink-0 mb-0.5 disabled:opacity-40"
+              style={{ backgroundColor: accentColor }}
+            >
+              {loading
+                ? <Loader2 size={15} className="text-white animate-spin" />
+                : <Send size={15} className="text-white" />
+              }
+            </button>
+          ) : (
+            <div className="w-9 h-9 shrink-0" />
+          )}
         </div>
 
         <p className="text-[10px] text-center mt-2" style={{ color: 'var(--text-faint)' }}>
@@ -725,13 +784,12 @@ export default function ChatPage() {
   )
 }
 
-// ── Session Item Component ────────────────────────────────────────────────────
+// ── Session Item ──────────────────────────────────────────────────────────────
 function SessionItem({
   session, isActive, isLongPressed, isEditing, editTitle, accentColor,
   onTap, onLongPressStart, onLongPressEnd,
   onPin, onRename, onDelete,
-  onEditChange, onEditSave, onEditCancel,
-  onDismissLongPress,
+  onEditChange, onEditSave, onEditCancel, onDismissLongPress,
 }: {
   session: ChatSession
   isActive: boolean
@@ -753,7 +811,7 @@ function SessionItem({
   return (
     <div className="relative mb-1">
       {isEditing ? (
-        <div className="flex items-center gap-2 px-3 py-2">
+        <div className="flex items-center gap-2 px-2 py-2">
           <input
             value={editTitle}
             onChange={e => onEditChange(e.target.value)}
@@ -762,12 +820,15 @@ function SessionItem({
             style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
             autoFocus
           />
-          <button onClick={onEditSave} className="w-8 h-8 flex items-center justify-center rounded-full"
+          <button onClick={onEditSave}
+            className="w-8 h-8 flex items-center justify-center rounded-full text-white"
             style={{ backgroundColor: accentColor }}>
-            <Check size={14} className="text-white" />
+            <Check size={14} />
           </button>
-          <button onClick={onEditCancel} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-black/5">
-            <X size={14} style={{ color: 'var(--text-muted)' }} />
+          <button onClick={onEditCancel}
+            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-black/5"
+            style={{ color: 'var(--text-muted)' }}>
+            <X size={14} />
           </button>
         </div>
       ) : (
@@ -781,39 +842,40 @@ function SessionItem({
             onClick={onTap}
             className="w-full text-left px-3 py-3 rounded-2xl transition-all flex items-center gap-3"
             style={{
-              backgroundColor: isActive ? (accentColor === '#dc2626' ? '#fee2e2' : '#dbeafe') : isLongPressed ? 'var(--bg)' : 'transparent',
-              color: isActive ? accentColor : 'var(--text)',
+              backgroundColor: isActive
+                ? (accentColor === '#dc2626' ? '#fee2e2' : '#dbeafe')
+                : isLongPressed ? 'var(--bg)' : 'transparent',
             }}
           >
-            <MessageSquare size={15} style={{ color: isActive ? accentColor : 'var(--text-faint)', flexShrink: 0 }} />
-            <span className="text-sm truncate flex-1" style={{ fontWeight: isActive ? 600 : 400 }}>
+            <MessageSquare size={14} style={{ color: isActive ? accentColor : 'var(--text-faint)', flexShrink: 0 }} />
+            <span className="text-sm truncate flex-1"
+              style={{ color: isActive ? accentColor : 'var(--text)', fontWeight: isActive ? 600 : 400 }}>
               {session.title}
             </span>
-            {session.pinned && <Pin size={12} style={{ color: 'var(--text-faint)', flexShrink: 0 }} />}
+            {session.pinned && <Pin size={11} style={{ color: 'var(--text-faint)', flexShrink: 0 }} />}
           </button>
 
-          {/* Long press context menu */}
           {isLongPressed && (
             <>
               <div className="fixed inset-0 z-40" onClick={onDismissLongPress} />
-              <div className="absolute left-0 right-0 z-50 rounded-2xl border overflow-hidden shadow-xl mt-1"
-                style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+              <div className="absolute left-0 right-0 z-50 rounded-2xl border overflow-hidden shadow-xl"
+                style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)', bottom: '100%', marginBottom: 4 }}>
                 <button onClick={onPin}
                   className="flex items-center gap-3 w-full px-4 py-3 text-sm font-semibold hover:bg-black/5"
                   style={{ color: 'var(--text)' }}>
-                  <Pin size={16} style={{ color: 'var(--text-muted)' }} />
+                  <Pin size={15} style={{ color: 'var(--text-muted)' }} />
                   {session.pinned ? 'Unpin conversation' : 'Pin conversation'}
                 </button>
                 <button onClick={onRename}
                   className="flex items-center gap-3 w-full px-4 py-3 text-sm font-semibold hover:bg-black/5"
                   style={{ color: 'var(--text)', borderTop: '1px solid var(--border)' }}>
-                  <Pencil size={16} style={{ color: 'var(--text-muted)' }} />
+                  <Pencil size={15} style={{ color: 'var(--text-muted)' }} />
                   Rename conversation
                 </button>
                 <button onClick={onDelete}
                   className="flex items-center gap-3 w-full px-4 py-3 text-sm font-semibold hover:bg-red-50"
                   style={{ color: '#dc2626', borderTop: '1px solid var(--border)' }}>
-                  <Trash2 size={16} />
+                  <Trash2 size={15} />
                   Delete conversation
                 </button>
               </div>
