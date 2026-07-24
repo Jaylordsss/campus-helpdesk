@@ -169,20 +169,19 @@ export default function ChatPage() {
 
   // ── Recording ─────────────────────────────────────────────────────────────
   const startRecording = () => {
-    // Use Web Speech API for real transcription
     const SpeechRecognition =
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
 
     if (!SpeechRecognition) {
-      alert('Voice input is not supported on this browser. Please use Chrome.')
+      alert('Voice input not supported. Please use Chrome.')
       return
     }
 
     const recognition = new SpeechRecognition()
     recognition.lang = 'en-PH'
-    recognition.continuous = false
-    recognition.interimResults = true
+    recognition.continuous = true       // keeps listening until user stops
+    recognition.interimResults = true   // shows text as you speak
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = (e: any) => {
@@ -193,41 +192,36 @@ export default function ChatPage() {
       setInput(transcript)
     }
 
-    recognition.onend = () => {
-      setIsRecording(false)
-      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current)
-      // Auto-send after voice input
-      setTimeout(() => {
-        setInput(prev => {
-          if (prev.trim()) {
-            sendMessage(prev.trim())
-            return ''
-          }
-          return prev
-        })
-      }, 300)
-    }
-
     recognition.onerror = () => {
       setIsRecording(false)
       if (recordingTimerRef.current) clearInterval(recordingTimerRef.current)
     }
 
+    // Do NOT add onend auto-send — user manually stops
     recognition.start()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ;(window as any)._speechRecognition = recognition
+
     setIsRecording(true)
     setRecordingSeconds(0)
-    setAudioBlob(null)
     recordingTimerRef.current = setInterval(() => setRecordingSeconds(s => s + 1), 1000)
   }
-
   const stopRecording = () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const recognition = (window as any)._speechRecognition
     if (recognition) recognition.stop()
     if (recordingTimerRef.current) clearInterval(recordingTimerRef.current)
     setIsRecording(false)
+    // Send whatever was transcribed
+    setTimeout(() => {
+      setInput(prev => {
+        if (prev.trim()) {
+          sendMessage(prev.trim())
+          return ''
+        }
+        return prev
+      })
+    }, 200)
   }
 
   const formatRecordingTime = (s: number) => {
@@ -393,15 +387,32 @@ export default function ChatPage() {
 
   return (
     <div
-      className="flex flex-col"
-      style={{ height: 'calc(100dvh - 56px)', backgroundColor: 'var(--bg)', overflow: 'hidden' }}
+      className="flex flex-col relative"
+      style={{ height: 'calc(100dvh - 90px)', backgroundColor: 'var(--bg)', overflow: 'hidden' }}
     >
 
       {/* ── HISTORY OVERLAY ── */}
+      {/* Backdrop — mobile only */}
+          <div
+            className="sm:hidden fixed inset-0 bg-black/30 -z-10"
+            onClick={() => { setShowHistory(false); setSearchQuery(''); setLongPressId(null) }}
+          />
       {showHistory && (
         <div
-          className="absolute inset-0 z-50 flex flex-col"
-          style={{ backgroundColor: 'var(--bg-card)', top: 0, bottom: 0, left: 0, right: 0, position: 'absolute' }}
+          className="z-50 flex flex-col"
+          style={{
+            backgroundColor: 'var(--bg-card)',
+            position: 'absolute',
+            top: 0,
+            bottom: 0,
+            left: 0,
+            zIndex: 40,
+            // Mobile: full width overlay, Desktop: sidebar 300px
+            right: typeof window !== 'undefined' && window.innerWidth >= 640 ? 'auto' : 0,
+            width: typeof window !== 'undefined' && window.innerWidth >= 640 ? '300px' : '100%',
+            borderRight: typeof window !== 'undefined' && window.innerWidth >= 640 ? '1px solid var(--border)' : 'none',
+            boxShadow: typeof window !== 'undefined' && window.innerWidth >= 640 ? '4px 0 16px rgba(0,0,0,0.08)' : 'none',
+          }}
         >
           <div className="flex items-center justify-between px-4 py-4 shrink-0"
             style={{ borderBottom: '1px solid var(--border)' }}>
@@ -566,12 +577,35 @@ export default function ChatPage() {
               </h2>
               <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Ask me anything</p>
             </div>
-            <div className="w-full overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-              <div className="flex gap-2" style={{ width: 'max-content', padding: '0 2px' }}>
-                {SUGGESTED.map((q, i) => (
-                  <button key={i} onClick={() => { setInput(q); inputRef.current?.focus() }}
-                    className="px-4 py-2.5 rounded-2xl text-xs font-semibold whitespace-nowrap"
-                    style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+            <div className="w-full overflow-hidden pb-1">
+              <style>{`
+                @keyframes marquee {
+                  0% { transform: translateX(0); }
+                  100% { transform: translateX(-50%); }
+                }
+                .marquee-track {
+                  display: flex;
+                  gap: 8px;
+                  width: max-content;
+                  animation: marquee 18s linear infinite;
+                }
+                .marquee-track:hover {
+                  animation-play-state: paused;
+                }
+              `}</style>
+              <div className="marquee-track">
+                {[...SUGGESTED, ...SUGGESTED].map((q, i) => (
+                  <button
+                    key={i}
+                    onClick={() => { setInput(q); inputRef.current?.focus() }}
+                    className="px-4 py-2.5 rounded-2xl text-xs font-semibold whitespace-nowrap transition-all"
+                    style={{
+                      backgroundColor: 'var(--bg-card)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--text-muted)',
+                      flexShrink: 0,
+                    }}
+                  >
                     {q}
                   </button>
                 ))}

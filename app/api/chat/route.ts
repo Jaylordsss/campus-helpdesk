@@ -91,7 +91,7 @@ export async function POST(request: Request) {
     }
 
     // ── 2. Live campus data ───────────────────────────────────────────────
-    const msg = message.toLowerCase()
+    const msg = (message || '').toLowerCase()
     let contextData = ''
 
     if (msg.match(/tuition|fee|fees|cost|price|amount|pay|how much/)) {
@@ -148,11 +148,24 @@ export async function POST(request: Request) {
       }
     }
 
-    // ── 3. System prompt ──────────────────────────────────────────────────
+    // ── 3. Image instruction ──────────────────────────────────────────────
+    const imageInstruction = imageBase64 ? `
+
+CRITICAL — IMAGE ANALYSIS MODE:
+The user has sent you an image. You MUST analyze it fully:
+- Describe everything you see in detail
+- Read ALL text visible in the image (receipts, documents, signs, forms, etc.)
+- Answer any question the user has about the image
+- If it is a document or form, extract all information from it
+- If it is a photo of a place or building, describe it
+- You are fully capable of vision and image understanding — use it completely
+` : ''
+
+    // ── 4. System prompt ──────────────────────────────────────────────────
     const systemPrompt = `You are a powerful AI assistant for the Smart Campus Help Desk of ${school} (ISAP and MCNP) in Alimanao, Penablanca, Cagayan, Philippines.
 
 You work like the real Gemini app — smart, thorough, and can answer anything.
-
+${imageInstruction}
 PRIORITY ORDER when answering:
 1. FIRST — Check the CAMPUS KNOWLEDGE BASE. If the answer is there, use it exactly.
 2. SECOND — Check LIVE CAMPUS DATA for tuition, courses, locations, FAQs.
@@ -178,11 +191,12 @@ RULES:
 - Use ₱ for peso amounts
 - Answer in English or Filipino depending on what the student uses
 - Be warm, helpful, detailed, and thorough like the real Gemini app
-- Never say "I don't know" — always try to find the answer`
+- Never say "I don't know" — always try to find the answer
+- If image is provided, ALWAYS analyze and describe it fully`
 
-    // ── 4. Build conversation ─────────────────────────────────────────────
-    // Build the last user message — support image
+    // ── 5. Build last user message with optional image ────────────────────
     const lastUserParts: object[] = []
+
     if (imageBase64 && imageMimeType) {
       lastUserParts.push({
         inline_data: {
@@ -191,18 +205,21 @@ RULES:
         }
       })
     }
+
     if (message) {
       lastUserParts.push({ text: message })
     }
+
     if (lastUserParts.length === 0) {
-      lastUserParts.push({ text: 'Describe what you see in this image.' })
+      lastUserParts.push({ text: 'Describe what you see in this image in detail.' })
     }
 
+    // ── 6. Build full conversation ────────────────────────────────────────
     const contents = [
       { role: 'user', parts: [{ text: systemPrompt }] },
       {
         role: 'model',
-        parts: [{ text: `Hello! I'm your Campus AI Assistant for ${school}. I can help with campus questions, homework, or anything else. What would you like to know?` }]
+        parts: [{ text: `Hello! I'm your Campus AI Assistant for ${school}. I can help with campus questions, analyze images, understand voice messages, homework, or anything else. What would you like to know?` }]
       },
       ...(conversationHistory || []).map((m: { role: string; content: string }) => ({
         role: m.role === 'model' ? 'model' : 'user',
@@ -211,17 +228,23 @@ RULES:
       { role: 'user', parts: lastUserParts }
     ]
 
-    // ── 5. Try models in order ────────────────────────────────────────────
-    let response = ''
-
-    const attempts = [
+    // ── 7. Model selection — vision models when image present ─────────────
+    const attempts = imageBase64 ? [
+      // Vision-capable models — NO search tool (conflicts with vision)
+      { model: 'gemini-2.0-flash', search: false },
+      { model: 'gemini-1.5-pro', search: false },
+      { model: 'gemini-1.5-flash', search: false },
+    ] : [
+      // Text-only — use search for best answers
       { model: 'gemini-2.5-flash', search: true },
       { model: 'gemini-2.5-flash', search: false },
       { model: 'gemini-2.0-flash', search: true },
       { model: 'gemini-2.0-flash', search: false },
       { model: 'gemini-1.5-flash', search: false },
-      { model: 'gemini-1.5-pro', search: false },
     ]
+
+    // ── 8. Try models in order ────────────────────────────────────────────
+    let response = ''
 
     for (const attempt of attempts) {
       try {
@@ -238,12 +261,12 @@ RULES:
       }
     }
 
-    // ── 6. Absolute last resort — bare minimum request ────────────────────
+    // ── 9. Absolute last resort ───────────────────────────────────────────
     if (!response) {
       try {
         response = await callGemini(
           'gemini-1.5-flash',
-          [{ role: 'user', parts: [{ text: message }] }],
+          [{ role: 'user', parts: lastUserParts }],
           false,
           apiKey,
           1024
