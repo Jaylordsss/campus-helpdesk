@@ -230,9 +230,8 @@ RULES:
 
     // ── 7. Model selection — vision models when image present ─────────────
     const attempts = imageBase64 ? [
-      // Vision-capable models — NO search tool (conflicts with vision)
-      { model: 'gemini-2.0-flash', search: false },
       { model: 'gemini-1.5-pro', search: false },
+      { model: 'gemini-2.0-flash', search: false },
       { model: 'gemini-1.5-flash', search: false },
     ] : [
       // Text-only — use search for best answers
