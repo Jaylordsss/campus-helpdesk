@@ -19,6 +19,85 @@ FOUNDER: Dr. Ronald Pagela Guzman (medical doctor). Wife: Wilma Roa (nurse).
 DR. RONALD P. GUZMAN MEDICAL CENTER: 250-bed capacity tertiary hospital with MRI, CT scans, ultrasound, X-ray, dialysis.
 `
 
+async function searchWeb(query: string): Promise<string> {
+  const tavilyKey = process.env.TAVILY_API_KEY
+  const serperKey = process.env.SERPER_API_KEY
+
+  // ── Tavily ────────────────────────────────────────────────────────────
+  if (tavilyKey) {
+    try {
+      const res = await fetch('https://api.tavily.com/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          api_key: tavilyKey,
+          query,
+          search_depth: 'advanced',
+          max_results: 5,
+          include_answer: true,
+          include_raw_content: false,
+        }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        let context = ''
+        if (data.answer) context += `Quick Answer: ${data.answer}\n\n`
+        if (data.results?.length) {
+          context += 'Search Results:\n'
+          for (const r of data.results) {
+            context += `\n[${r.title}]\n${r.content}\nSource: ${r.url}\n`
+          }
+        }
+        if (context) {
+          console.log('✅ Tavily search used')
+          return context
+        }
+      } else {
+        console.warn('⚠️ Tavily failed:', res.status)
+      }
+    } catch (e) {
+      console.error('❌ Tavily error:', e)
+    }
+  }
+
+  // ── Serper ────────────────────────────────────────────────────────────
+  if (serperKey) {
+    try {
+      const res = await fetch('https://google.serper.dev/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-KEY': serperKey,
+        },
+        body: JSON.stringify({ q: query, num: 5 }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        let context = ''
+        if (data.answerBox?.answer) {
+          context += `Quick Answer: ${data.answerBox.answer}\n\n`
+        }
+        if (data.organic?.length) {
+          context += 'Search Results:\n'
+          for (const r of data.organic.slice(0, 5)) {
+            context += `\n[${r.title}]\n${r.snippet}\nSource: ${r.link}\n`
+          }
+        }
+        if (context) {
+          console.log('✅ Serper search used')
+          return context
+        }
+      } else {
+        console.warn('⚠️ Serper failed:', res.status)
+      }
+    } catch (e) {
+      console.error('❌ Serper error:', e)
+    }
+  }
+
+  console.log('ℹ️ No search API available — AI uses training data')
+  return ''
+}
 // ── Gemini ────────────────────────────────────────────────────────────────────
 async function callGemini(
   model: string,
@@ -31,32 +110,45 @@ async function callGemini(
     contents,
     generationConfig: { maxOutputTokens: maxTokens, temperature: 0.7 },
   }
+
   if (useSearch) {
     body.tools = [{ google_search: {} }]
     body.systemInstruction = {
       parts: [{
-        text: `You have access to Google Search. 
+        text: `You have access to Google Search.
 ALWAYS search Google for:
 - Current news and events
-- Latest information and updates  
+- Latest information and updates
 - Any facts you are not 100% sure about
 - Prices, schedules, contact info
 - Anything that may have changed recently
-Search multiple times if needed to get complete information.
-Always cite where you found the information.`
+Search multiple times if needed. Always cite your sources.`
       }]
     }
   }
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }
   )
-  if (!res.ok) throw new Error(`Gemini ${model} failed: ${res.status}`)
+
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Gemini ${model} failed: ${res.status} ${err}`)
+  }
+
   const data = await res.json()
   const parts = data?.candidates?.[0]?.content?.parts || []
-  const text = parts.filter((p: { text?: string }) => p.text).map((p: { text: string }) => p.text).join('')
-  if (!text) throw new Error('Gemini empty response')
+  const text = parts
+    .filter((p: { text?: string }) => p.text)
+    .map((p: { text: string }) => p.text)
+    .join('')
+
+  if (!text) throw new Error(`Gemini ${model} empty response`)
   return text
 }
 
@@ -73,7 +165,7 @@ async function callGroq(
     ? 'meta-llama/llama-4-scout-17b-16e-instruct'
     : 'llama-3.3-70b-versatile'
 
-  const messages = [
+  const messages: object[] = [
     { role: 'system', content: systemPrompt },
     ...conversationHistory.map(m => ({
       role: m.role === 'model' ? 'assistant' : 'user',
@@ -81,14 +173,19 @@ async function callGroq(
     })),
   ]
 
-  // Last user message with optional image
   if (imageBase64 && imageMimeType) {
     messages.push({
       role: 'user',
       content: [
-        { type: 'image_url', image_url: { url: `data:${imageMimeType};base64,${imageBase64}` } },
-        { type: 'text', text: message || 'Describe this image in detail.' },
-      ] as unknown as string,
+        {
+          type: 'image_url',
+          image_url: { url: `data:${imageMimeType};base64,${imageBase64}` }
+        },
+        {
+          type: 'text',
+          text: message || 'Describe this image in complete detail.'
+        },
+      ],
     })
   } else {
     messages.push({ role: 'user', content: message })
@@ -108,11 +205,13 @@ async function callGroq(
     }),
   })
 
-  if (!res.ok) throw new Error(`Groq failed: ${res.status}`)
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Groq failed: ${res.status} ${err}`)
+  }
+
   const data = await res.json()
-  const message_content = data?.choices?.[0]?.message
-  const text = message_content?.content || 
-    message_content?.reasoning_details?.map((r: { content: string }) => r.content).join('') || ''
+  const text = data?.choices?.[0]?.message?.content || ''
   if (!text) throw new Error('Groq empty response')
   return text
 }
@@ -128,9 +227,9 @@ async function callOpenRouter(
 ): Promise<string> {
   const model = imageBase64
     ? 'google/gemini-2.0-flash-exp:free'
-    : 'poolside/laguna-s-2.1:free'
+    : 'nvidia/nemotron-3-ultra-550b-a55b:free'
 
-  const messages = [
+  const messages: object[] = [
     { role: 'system', content: systemPrompt },
     ...conversationHistory.map(m => ({
       role: m.role === 'model' ? 'assistant' : 'user',
@@ -151,9 +250,9 @@ async function callOpenRouter(
         },
         {
           type: 'text',
-          text: message || 'Describe this image in complete detail. Read all text visible. Analyze everything.'
+          text: message || 'Describe this image in complete detail. Read all text. Analyze everything.'
         },
-      ] as unknown as string,
+      ],
     })
   } else {
     messages.push({ role: 'user', content: message })
@@ -172,15 +271,21 @@ async function callOpenRouter(
       messages,
       max_tokens: 2048,
       temperature: 0.7,
-      ...(model === 'poolside/laguna-s-2.1:free' && {
+      ...(model === 'nvidia/nemotron-3-ultra-550b-a55b:free' && {
         reasoning: { effort: 'high' }
       }),
     }),
   })
 
-  if (!res.ok) throw new Error(`OpenRouter failed: ${res.status}`)
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`OpenRouter failed: ${res.status} ${err}`)
+  }
+
   const data = await res.json()
-  const text = data?.choices?.[0]?.message?.content || ''
+  const msgContent = data?.choices?.[0]?.message
+  const text = msgContent?.content ||
+    msgContent?.reasoning_details?.map((r: { content: string }) => r.content).join('') || ''
   if (!text) throw new Error('OpenRouter empty response')
   return text
 }
@@ -188,14 +293,20 @@ async function callOpenRouter(
 // ── Main handler ──────────────────────────────────────────────────────────────
 export async function POST(request: Request) {
   try {
-    const { message, school, conversationHistory, imageBase64, imageMimeType } = await request.json()
+    const {
+      message,
+      school,
+      conversationHistory,
+      imageBase64,
+      imageMimeType
+    } = await request.json()
 
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 
-    // ── Knowledge Base ────────────────────────────────────────────────────
+    // ── 1. Knowledge Base ─────────────────────────────────────────────────
     const { data: knowledge } = await supabase
       .from('knowledge_base')
       .select('title, content, category')
@@ -211,14 +322,16 @@ export async function POST(request: Request) {
       }
     }
 
-    // ── Live campus data ──────────────────────────────────────────────────
+    // ── 2. Live campus data ───────────────────────────────────────────────
     const msg = (message || '').toLowerCase()
     let contextData = ''
 
     if (msg.match(/tuition|fee|fees|cost|price|amount|pay|how much/)) {
       const { data: tuition } = await supabase
-        .from('tuition').select('year_level, semester, amount, course_id')
-        .eq('school', school).order('year_level').order('semester')
+        .from('tuition')
+        .select('year_level, semester, amount, course_id')
+        .eq('school', school)
+        .order('year_level').order('semester')
       const { data: courses } = await supabase
         .from('courses').select('id, name').eq('school', school)
       const map: Record<string, string> = {}
@@ -233,7 +346,8 @@ export async function POST(request: Request) {
 
     if (msg.match(/course|program|degree|nursing|medtech|bsit|criminology|pharmacy|physical therapy|social work/)) {
       const { data } = await supabase
-        .from('courses').select('name, description, duration, has_intersession')
+        .from('courses')
+        .select('name, description, duration, has_intersession')
         .eq('school', school).order('name')
       if (data?.length) {
         contextData += `\nCourses offered by ${school}:\n`
@@ -245,7 +359,8 @@ export async function POST(request: Request) {
 
     if (msg.match(/where|location|office|room|building|find|direction/)) {
       const { data } = await supabase
-        .from('locations').select('office_name, building, room')
+        .from('locations')
+        .select('office_name, building, room')
         .eq('school', school).order('office_name')
       if (data?.length) {
         contextData += `\nOffice locations for ${school}:\n`
@@ -265,52 +380,81 @@ export async function POST(request: Request) {
       }
     }
 
-    // ── System prompt ─────────────────────────────────────────────────────
+    // ── 3. Web search — always runs before OpenRouter/Groq ───────────────
+    let webSearchContext = ''
+    if (message && !imageBase64) {
+      // Always search — not just for specific keywords
+      webSearchContext = await searchWeb(message)
+    }
+
+    // ── 4. Image instruction ──────────────────────────────────────────────
     const imageInstruction = imageBase64 ? `
 
-CRITICAL — IMAGE ANALYSIS:
-The user sent an image. You MUST:
+CRITICAL — IMAGE ANALYSIS MODE:
+The user has sent an image. You MUST:
 - Describe everything you see in full detail
-- Read ALL text visible in the image
+- Read ALL text visible in the image (receipts, documents, signs, forms)
 - Answer any question about the image thoroughly
-- Analyze documents, receipts, forms, photos, screenshots completely
+- Analyze documents, receipts, forms, screenshots completely
+- You are fully capable of vision — use it without hesitation
 ` : ''
 
+    // ── 5. System prompt ──────────────────────────────────────────────────
     const systemPrompt = `You are a powerful AI assistant for the Smart Campus Help Desk of ${school} (ISAP and MCNP) in Alimanao, Penablanca, Cagayan, Philippines.
-${imageInstruction}
-PRIORITY when answering:
-1. FIRST — Campus Knowledge Base (use it exactly if answer is there)
-2. SECOND — Live Campus Data (tuition, courses, locations, FAQs)
-3. THIRD — Your own knowledge for everything else
 
-${knowledgeContext ? `CAMPUS KNOWLEDGE BASE:\n${knowledgeContext}` : ''}
-${contextData ? `\nLIVE CAMPUS DATA:\n${contextData}` : ''}
+You work like the real Gemini app — smart, thorough, and can answer anything.
+${imageInstruction}
+PRIORITY ORDER when answering:
+1. FIRST — Check CAMPUS KNOWLEDGE BASE. If answer is there, use it exactly.
+2. SECOND — Check LIVE CAMPUS DATA for tuition, courses, locations, FAQs.
+3. THIRD — Use WEB SEARCH RESULTS if provided.
+4. FOURTH — Use your own knowledge for everything else.
+
+${knowledgeContext ? `
+━━━━━━━━━━━━━━━━━━━━━━━━
+CAMPUS KNOWLEDGE BASE (CHECK THIS FIRST):
+━━━━━━━━━━━━━━━━━━━━━━━━
+${knowledgeContext}
+━━━━━━━━━━━━━━━━━━━━━━━━
+` : ''}
+
+${contextData ? `LIVE CAMPUS DATA:\n${contextData}` : ''}
+
+${webSearchContext ? `
+REAL-TIME WEB SEARCH RESULTS (use for current info):
+${webSearchContext}
+` : ''}
 
 SCHOOL BACKGROUND:
 ${SCHOOL_INFO}
 
 RULES:
-- Knowledge base first, then use Google Search for everything else
-- ALWAYS use Google Search for current events, news, prices, real-time data
-- Search multiple times if needed to get complete and accurate answers
-- Answer ANY question — school, homework, science, math, current events
-- For school questions not in knowledge base, search Google for the answer
-- Cite sources when using Google Search results
+- Always check knowledge base first — if the answer is there, use it exactly
+- For questions not in knowledge base, use web search results or your knowledge
+- Answer ANY question — school, homework, science, math, current events, anything
 - Use ₱ for peso amounts
 - Answer in English or Filipino depending on what the student uses
-- Be warm, helpful, and thorough
-- Never say "I don't know" — always try`
+- Be warm, helpful, detailed, and thorough
+- Never say "I don't know" — always try to find the answer
+- If image provided, ALWAYS analyze and describe it fully`
 
-    // ── Build Gemini contents ─────────────────────────────────────────────
+    // ── 6. Build Gemini contents ──────────────────────────────────────────
     const lastUserParts: object[] = []
     if (imageBase64 && imageMimeType) {
-      lastUserParts.push({ inline_data: { mime_type: imageMimeType, data: imageBase64 } })
+      lastUserParts.push({
+        inline_data: { mime_type: imageMimeType, data: imageBase64 }
+      })
     }
-    lastUserParts.push({ text: message || 'Describe this image in detail.' })
+    lastUserParts.push({
+      text: message || 'Describe this image in complete detail.'
+    })
 
     const geminiContents = [
       { role: 'user', parts: [{ text: systemPrompt }] },
-      { role: 'model', parts: [{ text: `Hello! I'm your Campus AI Assistant for ${school}. How can I help?` }] },
+      {
+        role: 'model',
+        parts: [{ text: `Hello! I'm your Campus AI Assistant for ${school}. I can help with campus questions, analyze images, answer anything you need. How can I help?` }]
+      },
       ...(conversationHistory || []).map((m: { role: string; content: string }) => ({
         role: m.role === 'model' ? 'model' : 'user',
         parts: [{ text: m.content }]
@@ -324,7 +468,7 @@ RULES:
 
     let response = ''
 
-    // ── Try Gemini first ──────────────────────────────────────────────────
+    // ── 7. Try Gemini first ───────────────────────────────────────────────
     if (geminiKey) {
       const geminiAttempts = imageBase64 ? [
         { model: 'gemini-2.5-flash-image', search: false },
@@ -332,8 +476,8 @@ RULES:
         { model: 'gemini-2.0-flash', search: false },
         { model: 'gemini-2.0-flash-lite', search: false },
       ] : [
-        { model: 'gemini-2.5-flash', search: true },   // always try with search first
-        { model: 'gemini-2.5-pro', search: true },      // pro with search
+        { model: 'gemini-2.5-flash', search: true },
+        { model: 'gemini-2.5-pro', search: true },
         { model: 'gemini-2.5-flash', search: false },
         { model: 'gemini-2.0-flash', search: true },
         { model: 'gemini-2.0-flash', search: false },
@@ -342,40 +486,49 @@ RULES:
 
       for (const attempt of geminiAttempts) {
         try {
-          response = await callGemini(attempt.model, geminiContents, attempt.search, geminiKey)
-          if (response) { console.log(`✅ Gemini: ${attempt.model}`); break }
+          response = await callGemini(
+            attempt.model,
+            geminiContents,
+            attempt.search,
+            geminiKey
+          )
+          if (response) {
+            console.log(`✅ Gemini: ${attempt.model}`)
+            break
+          }
         } catch (e) {
           console.error(`❌ Gemini ${attempt.model}:`, e)
         }
       }
     }
 
-    // ── Fallback 1: OpenRouter (Nvidia Nemotron Ultra 253B) ───────────────
+    // ── 8. Fallback: OpenRouter (Nemotron 550B / Gemini vision) ───────────
     if (!response && openrouterKey) {
       try {
         response = await callOpenRouter(
           systemPrompt, message, conversationHistory || [],
           imageBase64, imageMimeType, openrouterKey
         )
-        if (response) console.log('✅ Nvidia Nemotron Ultra via OpenRouter used')
+        if (response) console.log('✅ OpenRouter used')
       } catch (e) {
         console.error('❌ OpenRouter failed:', e)
       }
     }
 
-    // ── Fallback 2: Groq (Llama 3.3 70B) ─────────────────────────────────
+    // ── 9. Fallback: Groq ─────────────────────────────────────────────────
     if (!response && groqKey) {
       try {
         response = await callGroq(
           systemPrompt, message, conversationHistory || [],
           imageBase64, imageMimeType, groqKey
         )
-        if (response) console.log('✅ Groq fallback used')
+        if (response) console.log('✅ Groq used')
       } catch (e) {
         console.error('❌ Groq failed:', e)
       }
     }
 
+    // ── 10. All failed ────────────────────────────────────────────────────
     if (!response) {
       return NextResponse.json(
         { error: 'All AI services are currently unavailable. Please try again in a moment.' },
@@ -387,6 +540,7 @@ RULES:
 
   } catch (err: unknown) {
     console.error('Chat API error:', err)
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+    const msg = err instanceof Error ? err.message : 'Server error'
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
