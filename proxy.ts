@@ -57,8 +57,9 @@ export async function proxy(request: NextRequest) {
   }
 
   // Main admin trying to access office-admin → redirect to admin
-  if (pathname.startsWith('/office-admin') && role === 'admin' && (!office || office === 'General Administration')) {
-    return NextResponse.redirect(new URL('/admin', request.url))
+  // Block admin access without auth
+  if (pathname.startsWith('/admin') && !user) {
+    return NextResponse.redirect(new URL('/login', request.url))
   }
 
   // Student trying to access admin areas
@@ -80,3 +81,4 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: ['/((?!_next/static|_next/image|favicon.ico|icons|manifest.json|sw.js).*)'],
 }
+
